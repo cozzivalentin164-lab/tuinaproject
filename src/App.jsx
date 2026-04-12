@@ -167,13 +167,12 @@ function generateSeedData() {
   }
 
   const users = [
-    { id: "u1", username: "admin", password: "admin123", name: "Administrador", role: "admin" },
-    { id: "u2", username: "agenda", password: "agenda123", name: "Recepción", role: "agenda" },
-    { id: "u3", username: "lucia", password: "lucia123", name: "Lucía Fernández", role: "masajista", staffId: "s1" },
-    { id: "u4", username: "martin", password: "martin123", name: "Martín García", role: "masajista", staffId: "s2" },
-    { id: "u5", username: "camila", password: "camila123", name: "Camila López", role: "masajista", staffId: "s3" },
-    { id: "u6", username: "diego", password: "diego123", name: "Diego Ruiz", role: "masajista", staffId: "s4" },
-    { id: "u7", username: "valentina", password: "valentina123", name: "Valentina Díaz", role: "masajista", staffId: "s5" },
+    { id: "u1", username: "admin", password: "tuinaejec", name: "Administrador", role: "admin" },
+    { id: "u2", username: "agenda", password: "agenda777", name: "Recepción", role: "agenda" },
+    { id: "u3", username: "lucia", password: "lucia789", name: "Lucía Fernández", role: "masajista", staffId: "s1" },
+    { id: "u4", username: "martin", password: "martin789", name: "Martín García", role: "masajista", staffId: "s2" },
+    { id: "u5", username: "camila", password: "camila789", name: "Camila López", role: "masajista", staffId: "s3" },
+    
   ];
 
   return { clients, services, payments, appointments: [], users, staff: STAFF, massageTypes: MASSAGE_TYPES };
