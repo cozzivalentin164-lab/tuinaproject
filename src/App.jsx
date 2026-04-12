@@ -275,7 +275,8 @@ const Modal = ({ open, onClose, title, children, wide, dark }) => {
       <div className="animate-scale" onClick={e => e.stopPropagation()} style={{
         background: dark ? COLORS.surfaceDark : COLORS.surface, borderRadius: "16px",
         width: wide ? "min(900px, 92vw)" : "min(560px, 92vw)",
-        maxHeight: "90vh", overflow: "hidden",
+        maxHeight: "92vh", overflow: "auto",
+        display: "flex", flexDirection: "column",
         border: `1px solid ${dark ? COLORS.borderDark : COLORS.border}`,
         boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
         display: "flex", flexDirection: "column",
@@ -290,7 +291,8 @@ const Modal = ({ open, onClose, title, children, wide, dark }) => {
           <h3 style={{ fontFamily: "var(--font-display)", fontSize: "18px", fontWeight: 600, color: dark ? COLORS.textDark : COLORS.text }}>{title}</h3>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: dark ? COLORS.textMutedDark : COLORS.textMuted, padding: "4px" }}><Icons.Close /></button>
         </div>
-        <div style={{ padding: "24px", overflowY: "auto", flex: 1 }}>{children}</div>
+        <div style={{ padding: "24px", overflowY: "auto", flex: 1, minHeight: 0 }}>{children}</div>
+
       </div>
     </div>
   );
