@@ -1179,9 +1179,17 @@ const ClientsPage = ({ clients, setClients, services, payments, user, dark }) =>
   const [detail, setDetail] = useState(null);
   const canEdit = ["admin", "agenda"].includes(user.role);
   const filtered = clients.filter(c => !search || [c.name, c.phone, c.email].some(v => v?.toLowerCase().includes(search.toLowerCase())));
-  const handleSave = (client) => {
-    setClients(prev => { const exists = prev.find(c => c.id === client.id); if (exists) return prev.map(c => c.id === client.id ? client : c); return [...prev, client]; });
+  const handleSave = async (client) => {
+    const exists = clients.find(c => c.id === client.id);
+    if (exists) {
+      await supabase.from('clients').update(client).eq('id', client.id);
+    } else {
+      await supabase.from('clients').insert(client);
+    }
+    const { data: updated } = await supabase.from('clients').select('*');
+    setClients(updated);
     setShowForm(false); setEditing(null);
+
   };
   // Memoizado para no recalcular en cada celda de cada render
   const statsMap = useMemo(() => {
