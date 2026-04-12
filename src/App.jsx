@@ -181,16 +181,31 @@ const globalCSS = `
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
   .animate-fade { animation: fadeIn 0.35s ease forwards; }
   .animate-scale { animation: scaleIn 0.25s ease forwards; }
-  .mobile-header { display: none; position: fixed; top: 0; left: 0; right: 0; height: 56px; z-index: 150; background: #2d2926; color: #e8e4df; align-items: center; padding: 0 16px; gap: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
-  .mobile-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 190; }
+
+  /* ── MOBILE ── */
+  .zen-sidebar {
+    position: fixed; top: 0; left: 0; height: 100vh;
+    background: #2d2926; color: #e8e4df;
+    display: flex; flex-direction: column;
+    overflow: hidden; z-index: 200;
+    transition: width 0.3s ease, transform 0.3s ease;
+  }
+  .zen-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6); z-index: 190;
+  }
+  .zen-mobile-bar {
+    display: none; position: fixed; top: 0; left: 0; right: 0;
+    height: 56px; background: #2d2926; color: #e8e4df;
+    align-items: center; padding: 0 16px; gap: 12px;
+    z-index: 180; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
   @media (max-width: 768px) {
-    .sidebar { transform: translateX(-100%) !important; transition: transform 0.3s ease !important; width: 260px !important; z-index: 200 !important; }
-    .sidebar.open { transform: translateX(0) !important; }
-    .main-content { margin-left: 0 !important; padding: 72px 12px 24px !important; }
-    .mobile-header { display: flex !important; }
-    .mobile-overlay { display: block !important; }
-    table { font-size: 11px !important; }
-    table th, table td { padding: 8px 8px !important; }
+    .zen-sidebar { transform: translateX(-100%); width: 260px !important; }
+    .zen-sidebar.is-open { transform: translateX(0); }
+    .zen-overlay { display: block; }
+    .zen-mobile-bar { display: flex; }
+    .zen-main { margin-left: 0 !important; padding: 68px 12px 20px !important; }
   }
 `;
 
@@ -442,15 +457,12 @@ const NAV_ITEMS = [
   { id: "settings", label: "Config", icon: <Icons.Settings />, roles: ["admin", "agenda", "masajista"] },
 ];
 
-const Sidebar = ({ active, onNavigate, user, onLogout, dark, onToggleDark, collapsed, onToggleCollapse }) => {
+const Sidebar = ({ active, onNavigate, user, onLogout, dark, onToggleDark, collapsed, onToggleCollapse, isOpen }) => {
   const visibleItems = NAV_ITEMS.filter(item => item.roles.includes(user.role));
   return (
-  <div className={className || ""} style={{
+  <div className={`zen-sidebar${isOpen ? " is-open" : ""}`} style={{
     width: collapsed ? "64px" : "240px",
-    height: "100vh", position: "fixed", top: 0, left: 0,
     background: dark ? "#1a1a1f" : "#2d2926",
-    color: "#e8e4df", display: "flex", flexDirection: "column",
-    transition: "width 0.3s ease, transform 0.3s ease", zIndex: 100, overflow: "hidden",
   }}>
     <div style={{ padding: collapsed ? "18px 14px" : "24px 20px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -2693,18 +2705,15 @@ export default function App() {
     <>
       <style>{globalCSS}</style>
       <div style={{ minHeight: "100vh", background: bg, color: dark ? COLORS.textDark : COLORS.text, fontFamily: "var(--font-body)", transition: "background 0.3s ease" }}>
-        {/* Mobile header */}
-        <div className="mobile-header">
-          <button onClick={() => setMobileMenuOpen(true)} style={{ background: "none", border: "none", color: "#e8e4df", cursor: "pointer", padding: "4px" }}>
+        <div className="zen-mobile-bar">
+          <button onClick={() => setMobileMenuOpen(true)} style={{ background: "none", border: "none", color: "#e8e4df", cursor: "pointer", padding: "4px", display: "flex" }}>
             <Icons.Menu />
           </button>
           <span style={{ fontFamily: "var(--font-display)", fontSize: "18px", fontWeight: 600 }}>Tuina</span>
         </div>
-        {/* Mobile overlay */}
-        {mobileMenuOpen && <div className="mobile-overlay" onClick={() => setMobileMenuOpen(false)} />}
-        {/* Sidebar */}
-        <Sidebar className={`sidebar${mobileMenuOpen ? " open" : ""}`} active={activePage} onNavigate={handleMobileNav} user={currentUser} onLogout={() => { setCurrentUser(null); setMobileMenuOpen(false); }} dark={dark} onToggleDark={() => setDark(!dark)} collapsed={sidebarCollapsed} onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)} />
-        <main className="main-content" style={{ marginLeft: ml, padding: "28px 32px", transition: "margin-left 0.3s ease", minHeight: "100vh" }}>{renderPage()}</main>
+        {mobileMenuOpen && <div className="zen-overlay" onClick={() => setMobileMenuOpen(false)} />}
+        <Sidebar isOpen={mobileMenuOpen} active={activePage} onNavigate={handleMobileNav} user={currentUser} onLogout={() => { setCurrentUser(null); setMobileMenuOpen(false); }} dark={dark} onToggleDark={() => setDark(!dark)} collapsed={sidebarCollapsed} onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)} />
+        <main className="zen-main" style={{ marginLeft: ml, padding: "28px 32px", transition: "margin-left 0.3s ease", minHeight: "100vh" }}>{renderPage()}</main>
       </div>
     </>
   );
