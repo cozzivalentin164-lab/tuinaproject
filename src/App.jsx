@@ -260,28 +260,23 @@ const Input = ({ label, value, onChange, type = "text", placeholder, options, re
 
 const Modal = ({ open, onClose, title, children, wide, dark }) => {
   if (!open) return null;
-  // Use a portal-like approach: render overlay that covers the entire viewport
-  // above everything including the sidebar
   return (
     <div style={{
       position: "fixed", inset: 0,
       background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
-      display: "flex", alignItems: "flex-start", justifyContent: "center",
-      zIndex: 9999, paddingTop: "2vh", paddingBottom: "2vh",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      zIndex: 9999,
       paddingLeft: "20px", paddingRight: "20px",
-      overflowY: "auto",
       isolation: "isolate",
     }} onClick={onClose}>
       <div className="animate-scale" onClick={e => e.stopPropagation()} style={{
         background: dark ? COLORS.surfaceDark : COLORS.surface, borderRadius: "16px",
         width: wide ? "min(900px, 92vw)" : "min(560px, 92vw)",
-        maxHeight: "92vh", overflow: "auto",
-        display: "flex", flexDirection: "column",
+        maxHeight: "90vh",
         border: `1px solid ${dark ? COLORS.borderDark : COLORS.border}`,
         boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
         display: "flex", flexDirection: "column",
         flexShrink: 0,
-        margin: "0 auto",
       }}>
         <div style={{
           display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -292,7 +287,6 @@ const Modal = ({ open, onClose, title, children, wide, dark }) => {
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: dark ? COLORS.textMutedDark : COLORS.textMuted, padding: "4px" }}><Icons.Close /></button>
         </div>
         <div style={{ padding: "24px", overflowY: "auto", flex: 1, minHeight: 0 }}>{children}</div>
-
       </div>
     </div>
   );
