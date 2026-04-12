@@ -268,14 +268,15 @@ const Modal = ({ open, onClose, title, children, wide, dark }) => {
   if (!open) return null;
   return (
     <div style={{
-      position: "fixed", inset: 0,
+      position: "fixed", 
+      top: 0, left: 0, right: 0, bottom: 0,
+      width: "100vw", height: "100vh",
       background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
       display: "flex", alignItems: "flex-start", justifyContent: "center",
-      zIndex: 9999,
+      zIndex: 99999,
       paddingTop: "5vh", paddingBottom: "5vh",
       paddingLeft: "20px", paddingRight: "20px",
       overflowY: "auto",
-      isolation: "isolate",
     }} onClick={onClose}>
       <div className="animate-scale" onClick={e => e.stopPropagation()} style={{
         background: dark ? COLORS.surfaceDark : COLORS.surface, borderRadius: "16px",
