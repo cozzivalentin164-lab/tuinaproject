@@ -259,12 +259,18 @@ const Input = ({ label, value, onChange, type = "text", placeholder, options, re
 };
 
 const Modal = ({ open, onClose, title, children, wide, dark }) => {
-  const contentRef = React.useRef(null);
-  React.useEffect(() => {
-    if (open && contentRef.current) {
-      contentRef.current.scrollTop = 0;
+  const contentRef = useRef(null);
+  
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+      if (contentRef.current) contentRef.current.scrollTop = 0;
+    } else {
+      document.body.style.overflow = "";
     }
+    return () => { document.body.style.overflow = ""; };
   }, [open]);
+
   if (!open) return null;
   return (
     <div style={{
@@ -272,19 +278,17 @@ const Modal = ({ open, onClose, title, children, wide, dark }) => {
       top: 0, left: 0, right: 0, bottom: 0,
       width: "100vw", height: "100vh",
       background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
-      display: "flex", alignItems: "flex-start", justifyContent: "center",
+      display: "flex", alignItems: "center", justifyContent: "center",
       zIndex: 99999,
-      paddingTop: "5vh", paddingBottom: "5vh",
-      paddingLeft: "20px", paddingRight: "20px",
-      overflowY: "auto",
+      padding: "20px",
     }} onClick={onClose}>
       <div className="animate-scale" onClick={e => e.stopPropagation()} style={{
         background: dark ? COLORS.surfaceDark : COLORS.surface, borderRadius: "16px",
         width: wide ? "min(900px, 92vw)" : "min(560px, 92vw)",
+        maxHeight: "88vh",
         border: `1px solid ${dark ? COLORS.borderDark : COLORS.border}`,
         boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
         display: "flex", flexDirection: "column",
-        flexShrink: 0, margin: "auto",
       }}>
         <div style={{
           display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -294,7 +298,7 @@ const Modal = ({ open, onClose, title, children, wide, dark }) => {
           <h3 style={{ fontFamily: "var(--font-display)", fontSize: "18px", fontWeight: 600, color: dark ? COLORS.textDark : COLORS.text }}>{title}</h3>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: dark ? COLORS.textMutedDark : COLORS.textMuted, padding: "4px" }}><Icons.Close /></button>
         </div>
-        <div ref={contentRef} style={{ padding: "24px", overflowY: "auto", flex: 1, minHeight: 0, maxHeight: "75vh" }}>{children}</div>
+        <div ref={contentRef} style={{ padding: "24px", overflowY: "auto", flex: 1, minHeight: 0 }}>{children}</div>
       </div>
     </div>
   );
