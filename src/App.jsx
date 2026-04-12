@@ -465,8 +465,8 @@ const Tabs = ({ tabs, active, onChange, dark }) => (
 // ─── LOGIN SCREEN ───────────────────────────────────────────────────────────
 
 const LoginScreen = ({ onLogin, users }) => {
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("admin123");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const handleLogin = () => {
     const user = users.find(u => u.username === username && u.password === password);
@@ -493,14 +493,7 @@ const LoginScreen = ({ onLogin, users }) => {
             Iniciar Sesión
           </Button>
         </div>
-        <div style={{ marginTop: "24px", padding: "14px", background: "#faf9f7", borderRadius: "10px", textAlign: "left" }}>
-          <p style={{ fontSize: "11px", fontWeight: 600, color: COLORS.textMuted, marginBottom: "6px" }}>Usuarios demo:</p>
-          {users.map(u => (
-            <p key={u.id} style={{ fontSize: "11px", color: COLORS.textMuted, lineHeight: 1.6 }}>
-              <strong>{u.username}</strong> / {"•".repeat(u.password.length)} — <em>{u.name}</em>
-            </p>
-          ))}
-        </div>
+        
       </div>
     </div>
   );
@@ -2641,13 +2634,12 @@ export default function App() {
       // Forzar migración de usuarios al nuevo sistema de roles
       if (!data.users?.some(u => u.role === "masajista")) {
         updated.users = [
-          { id: "u1", username: "admin", password: "admin123", name: "Administrador", role: "admin" },
-          { id: "u2", username: "agenda", password: "agenda123", name: "Recepción", role: "agenda" },
-          { id: "u3", username: "lucia", password: "lucia123", name: "Lucía Fernández", role: "masajista", staffId: "s1" },
-          { id: "u4", username: "martin", password: "martin123", name: "Martín García", role: "masajista", staffId: "s2" },
-          { id: "u5", username: "camila", password: "camila123", name: "Camila López", role: "masajista", staffId: "s3" },
-          { id: "u6", username: "diego", password: "diego123", name: "Diego Ruiz", role: "masajista", staffId: "s4" },
-          { id: "u7", username: "valentina", password: "valentina123", name: "Valentina Díaz", role: "masajista", staffId: "s5" },
+          { id: "u1", username: "admin", password: "tuinaejec", name: "Administrador", role: "admin" },
+          { id: "u2", username: "agenda", password: "agenda777", name: "Recepción", role: "agenda" },
+          { id: "u3", username: "lucia", password: "lucia789", name: "Lucía Fernández", role: "masajista", staffId: "s1" },
+          { id: "u4", username: "martin", password: "martin789", name: "Martín García", role: "masajista", staffId: "s2" },
+          { id: "u5", username: "camila", password: "camila789", name: "Camila López", role: "masajista", staffId: "s3" },
+          
         ];
         changed = true;
       }
