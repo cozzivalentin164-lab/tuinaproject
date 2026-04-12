@@ -181,6 +181,15 @@ const globalCSS = `
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
   .animate-fade { animation: fadeIn 0.35s ease forwards; }
   .animate-scale { animation: scaleIn 0.25s ease forwards; }
+  .mobile-header { display: none; position: fixed; top: 0; left: 0; right: 0; height: 56px; z-index: 150; background: #2d2926; color: #e8e4df; align-items: center; padding: 0 16px; gap: 12px; }
+  .mobile-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 190; }
+  @media (max-width: 768px) {
+    .sidebar { transform: translateX(-100%); transition: transform 0.3s ease !important; }
+    .sidebar.open { transform: translateX(0); }
+    .main-content { margin-left: 0 !important; padding: 72px 16px 16px !important; }
+    .mobile-header { display: flex !important; }
+    .mobile-overlay { display: block !important; }
+  }
 `;
 
 // ─── REUSABLE COMPONENTS ────────────────────────────────────────────────────
@@ -439,7 +448,7 @@ const Sidebar = ({ active, onNavigate, user, onLogout, dark, onToggleDark, colla
     height: "100vh", position: "fixed", top: 0, left: 0,
     background: dark ? "#1a1a1f" : "#2d2926",
     color: "#e8e4df", display: "flex", flexDirection: "column",
-    transition: "width 0.3s ease", zIndex: 100, overflow: "hidden",
+    transition: "width 0.3s ease, transform 0.3s ease", zIndex: 100, overflow: "hidden",
   }}>
     <div style={{ padding: collapsed ? "18px 14px" : "24px 20px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -2591,6 +2600,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [activePage, setActivePage] = useState("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [data, setData] = useState({ clients: [], services: [], payments: [], appointments: [], users: [] });
   const [loading, setLoading] = useState(true);
@@ -2672,12 +2682,29 @@ export default function App() {
     }
   };
 
+  const handleMobileNav = (page) => {
+    setActivePage(page);
+    setMobileMenuOpen(false);
+  };
+
   return (
     <>
       <style>{globalCSS}</style>
       <div style={{ minHeight: "100vh", background: bg, color: dark ? COLORS.textDark : COLORS.text, fontFamily: "var(--font-body)", transition: "background 0.3s ease" }}>
-        <Sidebar active={activePage} onNavigate={setActivePage} user={currentUser} onLogout={() => setCurrentUser(null)} dark={dark} onToggleDark={() => setDark(!dark)} collapsed={sidebarCollapsed} onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)} />
-        <main style={{ marginLeft: ml, padding: "28px 32px", transition: "margin-left 0.3s ease", minHeight: "100vh" }}>{renderPage()}</main>
+        {/* Mobile header */}
+        <div className="mobile-header">
+          <button onClick={() => setMobileMenuOpen(true)} style={{ background: "none", border: "none", color: "#e8e4df", cursor: "pointer", padding: "4px" }}>
+            <Icons.Menu />
+          </button>
+          <span style={{ fontFamily: "var(--font-display)", fontSize: "18px", fontWeight: 600 }}>Tuina</span>
+        </div>
+        {/* Mobile overlay */}
+        {mobileMenuOpen && <div className="mobile-overlay" onClick={() => setMobileMenuOpen(false)} />}
+        {/* Sidebar */}
+        <div className={`sidebar${mobileMenuOpen ? " open" : ""}`}>
+          <Sidebar active={activePage} onNavigate={handleMobileNav} user={currentUser} onLogout={() => { setCurrentUser(null); setMobileMenuOpen(false); }} dark={dark} onToggleDark={() => setDark(!dark)} collapsed={sidebarCollapsed} onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)} />
+        </div>
+        <main className="main-content" style={{ marginLeft: ml, padding: "28px 32px", transition: "margin-left 0.3s ease", minHeight: "100vh" }}>{renderPage()}</main>
       </div>
     </>
   );
