@@ -267,7 +267,7 @@ const Modal = ({ open, onClose, title, children, wide, dark }) => {
       position: "fixed", inset: 0,
       background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
       display: "flex", alignItems: "flex-start", justifyContent: "center",
-      zIndex: 9999, paddingTop: "5vh", paddingBottom: "5vh",
+      zIndex: 9999, paddingTop: "2vh", paddingBottom: "2vh",
       paddingLeft: "20px", paddingRight: "20px",
       overflowY: "auto",
       isolation: "isolate",
@@ -275,7 +275,7 @@ const Modal = ({ open, onClose, title, children, wide, dark }) => {
       <div className="animate-scale" onClick={e => e.stopPropagation()} style={{
         background: dark ? COLORS.surfaceDark : COLORS.surface, borderRadius: "16px",
         width: wide ? "min(900px, 92vw)" : "min(560px, 92vw)",
-        maxHeight: "88vh", overflow: "hidden",
+        maxHeight: "90vh", overflow: "hidden",
         border: `1px solid ${dark ? COLORS.borderDark : COLORS.border}`,
         boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
         display: "flex", flexDirection: "column",
@@ -395,7 +395,7 @@ const LoginScreen = ({ onLogin, users }) => {
         width: "min(420px, 90vw)", boxShadow: "0 20px 60px rgba(124,106,86,0.12)", textAlign: "center",
       }}>
         <div style={{ marginBottom: "8px", fontSize: "44px" }}>🧘</div>
-        <h1 style={{ fontFamily: "var(--font-display)", fontSize: "28px", fontWeight: 600, color: COLORS.text, marginBottom: "4px" }}>ZenAdmin</h1>
+        <h1 style={{ fontFamily: "var(--font-display)", fontSize: "28px", fontWeight: 600, color: COLORS.text, marginBottom: "4px" }}>Tuina</h1>
         <p style={{ fontSize: "13px", color: COLORS.textMuted, marginBottom: "32px" }}>Panel de gestión de masajes</p>
         <div style={{ display: "flex", flexDirection: "column", gap: "14px", textAlign: "left" }}>
           <Input label="Usuario" value={username} onChange={setUsername} placeholder="admin" />
@@ -436,7 +436,7 @@ const Sidebar = ({ active, onNavigate, user, onLogout, dark, onToggleDark, colla
     <div style={{ padding: collapsed ? "18px 14px" : "24px 20px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
         <button onClick={onToggleCollapse} style={{ background: "none", border: "none", color: "#e8e4df", cursor: "pointer", padding: "2px" }}><Icons.Menu /></button>
-        {!collapsed && <span style={{ fontFamily: "var(--font-display)", fontSize: "20px", fontWeight: 600 }}>ZenAdmin</span>}
+        {!collapsed && <span style={{ fontFamily: "var(--font-display)", fontSize: "20px", fontWeight: 600 }}>Tuina</span>}
       </div>
     </div>
     <nav style={{ flex: 1, padding: "12px 8px", display: "flex", flexDirection: "column", gap: "2px" }}>
@@ -2626,7 +2626,7 @@ export default function App() {
       <style>{globalCSS}</style>
       <div style={{ textAlign: "center", animation: "pulse 1.5s infinite" }}>
         <div style={{ fontSize: "48px", marginBottom: "12px" }}>🧘</div>
-        <p style={{ color: COLORS.textMuted }}>Cargando ZenAdmin...</p>
+        <p style={{ color: COLORS.textMuted }}>Cargando Tuina...</p>
       </div>
     </div>
   );
