@@ -99,117 +99,29 @@ const isThisMonth = (dateStr) => {
   return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
 };
 
-// ─── SEED DATA GENERATOR ────────────────────────────────────────────────────
+// ─── SUPABASE MAPPERS (snake_case ↔ camelCase) ──────────────────────────────
 
-function generateSeedData() {
-  const clients = [
-    { id: "c1", name: "Ana Martínez", phone: "341-5551234", email: "ana@email.com", birthdate: "1990-03-15", notes: "Prefiere masaje suave" },
-    { id: "c2", name: "Carlos Benítez", phone: "341-5555678", email: "carlos@email.com", birthdate: "1985-07-22", notes: "Contractura crónica" },
-    { id: "c3", name: "María José Ruiz", phone: "341-5559012", email: "mj@email.com", birthdate: "1992-11-03", notes: "" },
-    { id: "c4", name: "Roberto Silva", phone: "341-5553456", email: "roberto@email.com", birthdate: "1978-01-30", notes: "Deportista" },
-    { id: "c5", name: "Laura Gómez", phone: "341-5557890", email: "laura@email.com", birthdate: "1995-06-18", notes: "Alergia a aceites esenciales" },
-    { id: "c6", name: "Fernando Torres", phone: "341-5552345", email: "fernando@email.com", birthdate: "1988-09-12", notes: "" },
-    { id: "c7", name: "Sofía Morales", phone: "341-5556789", email: "sofia@email.com", birthdate: "1993-04-25", notes: "Embarazo - cuidado especial" },
-    { id: "c8", name: "Diego Herrera", phone: "341-5550123", email: "diego@email.com", birthdate: "1982-12-08", notes: "" },
-    { id: "c9", name: "Valentina Paz", phone: "341-5554567", email: "val@email.com", birthdate: "1997-02-14", notes: "Cliente frecuente" },
-    { id: "c10", name: "Patricio Vega", phone: "341-5558901", email: "patricio@email.com", birthdate: "1975-08-20", notes: "Dolor lumbar" },
-  ];
+const mapService = (r) => ({
+  id: r.id, date: r.date, startTime: r.start_time, endTime: r.end_time,
+  duration: r.duration, massageTypeId: r.massage_type_id, description: r.description,
+  staffId: r.staff_id, clientId: r.client_id, room: r.room, branch: r.branch,
+  basePrice: r.base_price, discount: r.discount, surcharge: r.surcharge,
+  finalPrice: r.final_price, state: r.state, observations: r.observations,
+  createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at,
+});
 
-  const services = [];
-  const payments = [];
+const mapPayment = (r) => ({
+  id: r.id, serviceId: r.service_id, date: r.date, time: r.time,
+  amount: r.amount, pending: r.pending, state: r.state, method: r.method,
+  destino: r.destino, reference: r.reference, observations: r.observations,
+  registeredBy: r.registered_by, createdBy: r.created_by, createdAt: r.created_at,
+});
 
-  for (let i = 0; i < 85; i++) {
-    const daysBack = Math.floor(Math.random() * 45);
-    const date = daysAgo(daysBack);
-    const mt = MASSAGE_TYPES[Math.floor(Math.random() * MASSAGE_TYPES.length)];
-    const client = clients[Math.floor(Math.random() * clients.length)];
-    const staff = STAFF[Math.floor(Math.random() * STAFF.length)];
-    const room = ROOMS[Math.floor(Math.random() * ROOMS.length)];
-    const hour = 9 + Math.floor(Math.random() * 10);
-    const minute = [0, 15, 30, 45][Math.floor(Math.random() * 4)];
-    const duration = [30, 45, 60, 75, 90][Math.floor(Math.random() * 5)];
-    const startTime = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-    const endMinute = minute + duration;
-    const endHour = hour + Math.floor(endMinute / 60);
-    const endTime = `${String(endHour).padStart(2, "0")}:${String(endMinute % 60).padStart(2, "0")}`;
-    const discount = Math.random() > 0.8 ? Math.floor(Math.random() * 2000) : 0;
-    const surcharge = Math.random() > 0.9 ? Math.floor(Math.random() * 1500) : 0;
-    const finalPrice = mt.basePrice - discount + surcharge;
-    const stateRoll = Math.random();
-    const state = stateRoll > 0.12 ? "realizado" : stateRoll > 0.06 ? "cancelado" : stateRoll > 0.03 ? "no_asistio" : "pendiente";
-
-    const svcId = generateId();
-    services.push({
-      id: svcId, date, startTime, endTime, duration,
-      massageTypeId: mt.id, description: "", staffId: staff.id,
-      clientId: client.id, room, branch: "Central",
-      basePrice: mt.basePrice, discount, surcharge, finalPrice, state,
-      observations: "", createdBy: "admin",
-      createdAt: date + "T" + startTime, updatedAt: date + "T" + startTime,
-    });
-
-    if (state === "realizado") {
-      const payRoll = Math.random();
-      if (payRoll > 0.15) {
-        const method = PAYMENT_METHODS[Math.floor(Math.random() * PAYMENT_METHODS.length)];
-        const isPartial = Math.random() > 0.88;
-        const amountPaid = isPartial ? Math.floor(finalPrice * (0.4 + Math.random() * 0.4)) : finalPrice;
-        payments.push({
-          id: generateId(), serviceId: svcId, date, time: endTime,
-          amount: amountPaid, pending: finalPrice - amountPaid,
-          state: amountPaid >= finalPrice ? "pagado" : "parcial",
-          method: method.id,
-          destino: Math.random() > 0.5 ? "masajista" : "centro",
-          reference: Math.random() > 0.5 ? `REF-${Math.floor(Math.random() * 99999)}` : "",
-          observations: "", createdBy: "admin", createdAt: date + "T" + endTime,
-        });
-      }
-    }
-  }
-
-  const users = [
-    { id: "u1", username: "admin", password: "tuinaejec", name: "Administrador", role: "admin" },
-    { id: "u2", username: "agenda", password: "agenda777", name: "Recepción", role: "agenda" },
-    { id: "u3", username: "lucia", password: "lucia789", name: "Lucía Fernández", role: "masajista", staffId: "s1" },
-    { id: "u4", username: "martin", password: "martin789", name: "Martín García", role: "masajista", staffId: "s2" },
-    { id: "u5", username: "camila", password: "camila789", name: "Camila López", role: "masajista", staffId: "s3" },
-    
-  ];
-
-  return { clients, services, payments, appointments: [], users, staff: STAFF, massageTypes: MASSAGE_TYPES };
-}
-
-// ─── LOCAL STORAGE HOOK ─────────────────────────────────────────────────────
-
-function useLocalStorage(key, initialValue) {
-  const [data, setData] = useState(() => {
-    try {
-      const stored = localStorage.getItem(key);
-      return stored ? JSON.parse(stored) : initialValue;
-    } catch {
-      return initialValue;
-    }
-  });
-  const [loaded] = useState(true);
-
-  // Ref para siempre tener el valor más reciente y evitar stale closure
-  const dataRef = useRef(data);
-  useEffect(() => { dataRef.current = data; }, [data]);
-
-  const save = useCallback((newData) => {
-    const d = typeof newData === "function" ? newData(dataRef.current) : newData;
-    dataRef.current = d;
-    setData(d);
-    try {
-      localStorage.setItem(key, JSON.stringify(d));
-    } catch (e) {
-      console.error("Storage error:", e);
-    }
-    return d;
-  }, [key]); // ya no depende de data, evita stale closure
-
-  return [data, save, loaded];
-}
+const mapAppointment = (r) => ({
+  id: r.id, date: r.date, time: r.time, clientId: r.client_id,
+  massageTypeId: r.massage_type_id, staffId: r.staff_id, duration: r.duration,
+  state: r.state, room: r.room, observations: r.observations,
+});
 
 // ─── STYLE CONSTANTS ────────────────────────────────────────────────────────
 
@@ -885,15 +797,31 @@ const ServicesPage = ({ services, setServices, payments, clients, user, dark }) 
       return searchMatch && (!filterType || s.massageTypeId === filterType) && (!filterState || s.state === filterState) && (!filterStaff || s.staffId === filterStaff) && (!filterDateFrom || s.date >= filterDateFrom) && (!filterDateTo || s.date <= filterDateTo);
     }).sort((a, b) => b.date.localeCompare(a.date) || (b.startTime || "").localeCompare(a.startTime || ""));
   }, [services, clients, search, filterType, filterState, filterStaff, filterDateFrom, filterDateTo]);
-  const handleSave = (svc) => {
-    setServices(prev => {
-      const exists = prev.find(s => s.id === svc.id);
-      if (exists) return prev.map(s => s.id === svc.id ? { ...svc, updatedAt: new Date().toISOString() } : s);
-      return [...prev, { ...svc, createdBy: user.username, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }];
-    });
+  const handleSave = async (svc) => {
+    const row = {
+      id: svc.id, date: svc.date, start_time: svc.startTime, end_time: svc.endTime,
+      duration: svc.duration, massage_type_id: svc.massageTypeId, description: svc.description,
+      staff_id: svc.staffId, client_id: svc.clientId, room: svc.room, branch: svc.branch,
+      base_price: svc.basePrice, discount: svc.discount, surcharge: svc.surcharge,
+      final_price: svc.finalPrice, state: svc.state, observations: svc.observations,
+      updated_at: new Date().toISOString(),
+    };
+    const exists = services.find(s => s.id === svc.id);
+    if (exists) {
+      await supabase.from('services').update(row).eq('id', svc.id);
+    } else {
+      await supabase.from('services').insert({ ...row, created_by: user.username, created_at: new Date().toISOString() });
+    }
+    const { data: updated } = await supabase.from('services').select('*');
+    setServices((updated || []).map(mapService));
     setShowForm(false); setEditing(null);
   };
-  const handleDelete = (id) => { setServices(prev => prev.filter(s => s.id !== id)); setConfirmDelete(null); setDetail(null); };
+  const handleDelete = async (id) => {
+    await supabase.from('services').delete().eq('id', id);
+    const { data: updated } = await supabase.from('services').select('*');
+    setServices((updated || []).map(mapService));
+    setConfirmDelete(null); setDetail(null);
+  };
   const getPaymentStatus = (svc) => {
     const paid = _.sumBy(payments.filter(p => p.serviceId === svc.id && p.state !== "anulado"), "amount");
     if (paid >= svc.finalPrice) return "pagado";
@@ -1044,18 +972,29 @@ const PaymentsPage = ({ services, payments, setPayments, clients, user, staffFil
 
   const [deleteTarget, setDeleteTarget] = useState(null);
 
-  const handleSavePayment = (payment) => {
-    setPayments(prev => {
-      const exists = prev.find(p => p.id === payment.id);
-      if (exists) return prev.map(p => p.id === payment.id ? payment : p);
-      return [...prev, { ...payment, createdBy: user.username, createdAt: new Date().toISOString() }];
-    });
+  const handleSavePayment = async (payment) => {
+    const row = {
+      id: payment.id, service_id: payment.serviceId, date: payment.date, time: payment.time,
+      amount: payment.amount, pending: payment.pending, state: payment.state, method: payment.method,
+      destino: payment.destino, reference: payment.reference, observations: payment.observations,
+      registered_by: payment.registeredBy, created_by: user.username, created_at: new Date().toISOString(),
+    };
+    const exists = payments.find(p => p.id === payment.id);
+    if (exists) {
+      await supabase.from('payments').update(row).eq('id', payment.id);
+    } else {
+      await supabase.from('payments').insert(row);
+    }
+    const { data: updated } = await supabase.from('payments').select('*');
+    setPayments((updated || []).map(mapPayment));
     setShowForm(false); setShowNewForm(false); setSelectedService(null);
   };
 
-  const handleDeletePayment = () => {
+  const handleDeletePayment = async () => {
     if (!deleteTarget) return;
-    setPayments(prev => prev.filter(p => p.id !== deleteTarget.id));
+    await supabase.from('payments').delete().eq('id', deleteTarget.id);
+    const { data: updated } = await supabase.from('payments').select('*');
+    setPayments((updated || []).map(mapPayment));
     setDeleteTarget(null);
   };
 
@@ -1187,9 +1126,8 @@ const ClientsPage = ({ clients, setClients, services, payments, user, dark }) =>
       await supabase.from('clients').insert(client);
     }
     const { data: updated } = await supabase.from('clients').select('*');
-    setClients(updated);
+    setClients(updated || []);
     setShowForm(false); setEditing(null);
-
   };
   // Memoizado para no recalcular en cada celda de cada render
   const statsMap = useMemo(() => {
@@ -1569,12 +1507,21 @@ const LiquidacionesTab = ({ validPay, allPayments, setPayments, services, allRea
     });
   }, [realized, validPay, clients]);
 
-  const handleSavePago = (payment) => {
-    setPayments(prev => {
-      const exists = prev.find(p => p.id === payment.id);
-      if (exists) return prev.map(p => p.id === payment.id ? payment : p);
-      return [...prev, { ...payment, createdBy: user?.username || "admin", createdAt: new Date().toISOString() }];
-    });
+  const handleSavePago = async (payment) => {
+    const row = {
+      id: payment.id, service_id: payment.serviceId, date: payment.date, time: payment.time,
+      amount: payment.amount, pending: payment.pending, state: payment.state, method: payment.method,
+      destino: payment.destino, reference: payment.reference, observations: payment.observations,
+      registered_by: payment.registeredBy, created_by: user?.username || "admin", created_at: new Date().toISOString(),
+    };
+    const exists = allPayments.find(p => p.id === payment.id);
+    if (exists) {
+      await supabase.from('payments').update(row).eq('id', payment.id);
+    } else {
+      await supabase.from('payments').insert(row);
+    }
+    const { data: updated } = await supabase.from('payments').select('*');
+    setPayments((updated || []).map(mapPayment));
     setShowPayForm(false);
     setSelectedService(null);
   };
@@ -2241,18 +2188,16 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, user, staffF
     setCurrentDate(d);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.date || !form.clientId || !form.massageTypeId || !form.staffId) {
       return alert("Completar campos obligatorios");
     }
-    // Conflicto de masajista
     const conflict = appointments.some(a => {
       if (editing && a.id === editing.id) return false;
       return a.date === form.date && a.staffId === form.staffId && overlaps(form.time, form.duration, a.time, a.duration);
     });
     if (conflict) return alert("Esa profesional ya tiene un turno en ese horario");
 
-    // Conflicto de sala (si hay sala cargada)
     if (form.room) {
       const roomConflict = appointments.some(a => {
         if (editing && a.id === editing.id) return false;
@@ -2261,28 +2206,40 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, user, staffF
       if (roomConflict) return alert(`La ${form.room} ya está ocupada en ese horario`);
     }
 
+    const row = {
+      date: form.date, time: form.time, client_id: form.clientId,
+      massage_type_id: form.massageTypeId, staff_id: form.staffId,
+      duration: form.duration, state: form.state, room: form.room,
+      observations: form.observations,
+    };
+
     if (editing) {
-      setAppointments(prev => prev.map(a => a.id === editing.id ? { ...form, id: editing.id } : a));
+      await supabase.from('appointments').update(row).eq('id', editing.id);
       setNotifAppt({ ...form, id: editing.id, _action: "modificado" });
     } else {
       const newId = generateId();
-      setAppointments(prev => [...prev, { ...form, id: newId }]);
+      await supabase.from('appointments').insert({ ...row, id: newId });
       setNotifAppt({ ...form, id: newId, _action: "agendado" });
     }
+    const { data: updated } = await supabase.from('appointments').select('*');
+    setAppointments((updated || []).map(mapAppointment));
     setShowForm(false); setEditing(null); setForm(emptyForm);
   };
 
   const handleEdit = (appt) => { setEditing(appt); setForm(appt); setSelectedAppt(null); setShowForm(true); };
 
-  const handleDeleteConfirmed = () => {
+  const handleDeleteConfirmed = async () => {
     if (!deleteTarget) return;
     const appt = appointments.find(a => a.id === deleteTarget);
-    setAppointments(prev => prev.filter(a => a.id !== deleteTarget));
+    await supabase.from('appointments').delete().eq('id', deleteTarget);
+    const { data: updated } = await supabase.from('appointments').select('*');
+    setAppointments((updated || []).map(mapAppointment));
     setSelectedAppt(null); setDeleteTarget(null);
     if (appt) setNotifAppt({ ...appt, _action: "eliminado" });
   };
 
-  const handleChangeState = (apptId, newState) => {
+  const handleChangeState = async (apptId, newState) => {
+    await supabase.from('appointments').update({ state: newState }).eq('id', apptId);
     setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, state: newState } : a));
     setSelectedAppt(prev => prev?.id === apptId ? { ...prev, state: newState } : prev);
   };
@@ -2590,8 +2547,6 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, user, staffF
 // ─── SETTINGS PAGE ──────────────────────────────────────────────────────────
 
 const SettingsPage = ({ user, dark, data }) => {
-  const [resetConfirm, setResetConfirm] = useState(false);
-  const handleReset = () => { localStorage.removeItem("zen_data"); window.location.reload(); };
   return (
     <div className="animate-fade" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       <div>
@@ -2607,7 +2562,7 @@ const SettingsPage = ({ user, dark, data }) => {
       </div>
       <div style={{ background: dark ? COLORS.cardDark : COLORS.card, borderRadius: "14px", padding: "24px", border: `1px solid ${dark ? COLORS.borderDark : COLORS.border}` }}>
         <h3 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "16px", color: dark ? COLORS.textDark : COLORS.text }}>Permisos</h3>
-        {[["Ver Dashboard", ["admin", "recepcion", "caja", "supervisor"]], ["Registrar Masajes", ["admin", "recepcion"]], ["Eliminar Masajes", ["admin"]], ["Registrar Cobros", ["admin", "recepcion", "caja"]], ["Ver Reportes", ["admin", "supervisor"]], ["Gestionar Clientes", ["admin", "recepcion"]]].map(([perm, roles]) => (
+        {[["Ver Dashboard", ["admin"]], ["Registrar Masajes", ["admin", "agenda"]], ["Eliminar Masajes", ["admin"]], ["Registrar Cobros", ["admin", "agenda", "masajista"]], ["Ver Reportes", ["admin"]], ["Gestionar Clientes", ["admin", "agenda"]]].map(([perm, roles]) => (
           <div key={perm} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: dark ? "rgba(255,255,255,0.02)" : "#faf9f7", borderRadius: "8px", marginBottom: "4px", fontSize: "13px" }}>
             <span style={{ color: dark ? COLORS.textDark : COLORS.text }}>{perm}</span>
             {roles.includes(user.role) ? <span style={{ color: COLORS.success }}><Icons.Check /></span> : <span style={{ color: COLORS.textMuted }}>—</span>}
@@ -2616,10 +2571,8 @@ const SettingsPage = ({ user, dark, data }) => {
       </div>
       <div style={{ background: dark ? COLORS.cardDark : COLORS.card, borderRadius: "14px", padding: "24px", border: `1px solid ${dark ? COLORS.borderDark : COLORS.border}` }}>
         <h3 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "12px", color: dark ? COLORS.textDark : COLORS.text }}>Datos</h3>
-        <p style={{ fontSize: "13px", color: COLORS.textMuted, marginBottom: "16px" }}>Servicios: {data.services?.length || 0} · Pagos: {data.payments?.length || 0} · Clientes: {data.clients?.length || 0}</p>
-        <Button variant="danger" onClick={() => setResetConfirm(true)}>Resetear Datos Demo</Button>
+        <p style={{ fontSize: "13px", color: COLORS.textMuted }}>Servicios: {data.services?.length || 0} · Pagos: {data.payments?.length || 0} · Clientes: {data.clients?.length || 0}</p>
       </div>
-      <ConfirmDialog open={resetConfirm} onConfirm={handleReset} onCancel={() => setResetConfirm(false)} message="¿Resetear todos los datos?" dark={dark} />
     </div>
   );
 };
@@ -2647,9 +2600,9 @@ export default function App() {
         ]);
         setData({
           clients: clients.data || [],
-          services: services.data || [],
-          payments: payments.data || [],
-          appointments: appointments.data || [],
+          services: (services.data || []).map(mapService),
+          payments: (payments.data || []).map(mapPayment),
+          appointments: (appointments.data || []).map(mapAppointment),
           users: users.data || [],
         });
       } catch (e) {
