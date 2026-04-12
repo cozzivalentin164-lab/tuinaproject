@@ -440,10 +440,10 @@ const NAV_ITEMS = [
   { id: "settings", label: "Config", icon: <Icons.Settings />, roles: ["admin", "agenda", "masajista"] },
 ];
 
-const Sidebar = ({ active, onNavigate, user, onLogout, dark, onToggleDark, collapsed, onToggleCollapse }) => {
+const Sidebar = ({ active, onNavigate, user, onLogout, dark, onToggleDark, collapsed, onToggleCollapse, className }) => {
   const visibleItems = NAV_ITEMS.filter(item => item.roles.includes(user.role));
   return (
-  <div style={{
+  <div className={className} style={{
     width: collapsed ? "64px" : "240px",
     height: "100vh", position: "fixed", top: 0, left: 0,
     background: dark ? "#1a1a1f" : "#2d2926",
@@ -2701,9 +2701,7 @@ export default function App() {
         {/* Mobile overlay */}
         {mobileMenuOpen && <div className="mobile-overlay" onClick={() => setMobileMenuOpen(false)} />}
         {/* Sidebar */}
-        <div className={`sidebar${mobileMenuOpen ? " open" : ""}`}>
-          <Sidebar active={activePage} onNavigate={handleMobileNav} user={currentUser} onLogout={() => { setCurrentUser(null); setMobileMenuOpen(false); }} dark={dark} onToggleDark={() => setDark(!dark)} collapsed={sidebarCollapsed} onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)} />
-        </div>
+        <Sidebar className={`sidebar${mobileMenuOpen ? " open" : ""}`} active={activePage} onNavigate={handleMobileNav} user={currentUser} onLogout={() => { setCurrentUser(null); setMobileMenuOpen(false); }} dark={dark} onToggleDark={() => setDark(!dark)} collapsed={sidebarCollapsed} onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)} />
         <main className="main-content" style={{ marginLeft: ml, padding: "28px 32px", transition: "margin-left 0.3s ease", minHeight: "100vh" }}>{renderPage()}</main>
       </div>
     </>
