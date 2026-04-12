@@ -181,14 +181,16 @@ const globalCSS = `
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
   .animate-fade { animation: fadeIn 0.35s ease forwards; }
   .animate-scale { animation: scaleIn 0.25s ease forwards; }
-  .mobile-header { display: none; position: fixed; top: 0; left: 0; right: 0; height: 56px; z-index: 150; background: #2d2926; color: #e8e4df; align-items: center; padding: 0 16px; gap: 12px; }
-  .mobile-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 190; }
+  .mobile-header { display: none; position: fixed; top: 0; left: 0; right: 0; height: 56px; z-index: 150; background: #2d2926; color: #e8e4df; align-items: center; padding: 0 16px; gap: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+  .mobile-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 190; }
   @media (max-width: 768px) {
-    .sidebar { transform: translateX(-100%); transition: transform 0.3s ease !important; }
-    .sidebar.open { transform: translateX(0); }
-    .main-content { margin-left: 0 !important; padding: 72px 16px 16px !important; }
+    .sidebar { transform: translateX(-100%) !important; transition: transform 0.3s ease !important; width: 260px !important; z-index: 200 !important; }
+    .sidebar.open { transform: translateX(0) !important; }
+    .main-content { margin-left: 0 !important; padding: 72px 12px 24px !important; }
     .mobile-header { display: flex !important; }
     .mobile-overlay { display: block !important; }
+    table { font-size: 11px !important; }
+    table th, table td { padding: 8px 8px !important; }
   }
 `;
 
@@ -440,10 +442,10 @@ const NAV_ITEMS = [
   { id: "settings", label: "Config", icon: <Icons.Settings />, roles: ["admin", "agenda", "masajista"] },
 ];
 
-const Sidebar = ({ active, onNavigate, user, onLogout, dark, onToggleDark, collapsed, onToggleCollapse, className }) => {
+const Sidebar = ({ active, onNavigate, user, onLogout, dark, onToggleDark, collapsed, onToggleCollapse }) => {
   const visibleItems = NAV_ITEMS.filter(item => item.roles.includes(user.role));
   return (
-  <div className={className} style={{
+  <div className={className || ""} style={{
     width: collapsed ? "64px" : "240px",
     height: "100vh", position: "fixed", top: 0, left: 0,
     background: dark ? "#1a1a1f" : "#2d2926",
