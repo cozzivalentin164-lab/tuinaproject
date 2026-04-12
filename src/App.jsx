@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } from "recharts";
 import _ from "lodash";
+import { supabase } from './supabase.js'
 
 // ─── CONSTANTS & SEED DATA ───────────────────────────────────────────────────
 
@@ -2618,45 +2619,54 @@ const SettingsPage = ({ user, dark, data }) => {
 // ─── MAIN APP ───────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [data, setData, dataLoaded] = useLocalStorage("zen_data", null);
   const [currentUser, setCurrentUser] = useState(null);
   const [activePage, setActivePage] = useState("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [dark, setDark] = useState(false);
+  const [data, setData] = useState({ clients: [], services: [], payments: [], appointments: [], users: [] });
+  const [loading, setLoading] = useState(true);
 
+  // Cargar todos los datos desde Supabase al iniciar
   useEffect(() => {
-    if (dataLoaded && !data) { setData(generateSeedData()); return; }
-    if (dataLoaded && data) {
-      let updated = { ...data };
-      let changed = false;
-      if (!data.appointments) { updated.appointments = []; changed = true; }
-      // Forzar migración de usuarios al nuevo sistema de roles
-      if (!data.users?.some(u => u.role === "masajista")) {
-        updated.users = [
-          { id: "u1", username: "admin", password: "tuinaejec", name: "Administrador", role: "admin" },
-          { id: "u2", username: "agenda", password: "agenda777", name: "Recepción", role: "agenda" },
-          { id: "u3", username: "lucia", password: "lucia789", name: "Lucía Fernández", role: "masajista", staffId: "s1" },
-          { id: "u4", username: "martin", password: "martin789", name: "Martín García", role: "masajista", staffId: "s2" },
-          { id: "u5", username: "camila", password: "camila789", name: "Camila López", role: "masajista", staffId: "s3" },
-          
-        ];
-        changed = true;
+    const loadData = async () => {
+      try {
+        const [clients, services, payments, appointments, users] = await Promise.all([
+          supabase.from('clients').select('*'),
+          supabase.from('services').select('*'),
+          supabase.from('payments').select('*'),
+          supabase.from('appointments').select('*'),
+          supabase.from('users').select('*'),
+        ]);
+        setData({
+          clients: clients.data || [],
+          services: services.data || [],
+          payments: payments.data || [],
+          appointments: appointments.data || [],
+          users: users.data || [],
+        });
+      } catch (e) {
+        console.error("Error cargando datos:", e);
+      } finally {
+        setLoading(false);
       }
-      if (changed) setData(updated);
-    }
-  }, [dataLoaded, data, setData]);
+    };
+    loadData();
+  }, []);
 
-  const updateField = useCallback((field) => (updater) => {
+  const updateField = useCallback((field) => async (updater) => {
     setData(prev => {
       const newVal = typeof updater === "function" ? updater(prev[field]) : updater;
       return { ...prev, [field]: newVal };
     });
-  }, [setData]);
+  }, []);
 
-  if (!data) return (
+  if (loading) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: COLORS.bg, fontFamily: "var(--font-body)" }}>
       <style>{globalCSS}</style>
-      <div style={{ textAlign: "center", animation: "pulse 1.5s infinite" }}><div style={{ fontSize: "48px", marginBottom: "12px" }}>🧘</div><p style={{ color: COLORS.textMuted }}>Cargando ZenAdmin...</p></div>
+      <div style={{ textAlign: "center", animation: "pulse 1.5s infinite" }}>
+        <div style={{ fontSize: "48px", marginBottom: "12px" }}>🧘</div>
+        <p style={{ color: COLORS.textMuted }}>Cargando ZenAdmin...</p>
+      </div>
     </div>
   );
 
@@ -2665,11 +2675,10 @@ export default function App() {
   const bg = dark ? COLORS.bgDark : COLORS.bg;
   const ml = sidebarCollapsed ? "64px" : "240px";
   const role = currentUser.role;
-  const staffId = currentUser.staffId;
+  const staffId = currentUser.staff_id;
 
   const renderPage = () => {
     const allowed = NAV_ITEMS.filter(i => i.roles.includes(role)).map(i => i.id);
-    // Si el rol no tiene ninguna página asignada, mostrar mensaje en lugar de bucle infinito
     if (allowed.length === 0) {
       return (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", flexDirection: "column", gap: "12px" }}>
@@ -2679,7 +2688,6 @@ export default function App() {
       );
     }
     if (!allowed.includes(activePage)) {
-      // Solo redirige si hay páginas disponibles, evitando bucle con allowed[0] === undefined
       setTimeout(() => setActivePage(allowed[0]), 0);
       return null;
     }
