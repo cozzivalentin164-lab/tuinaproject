@@ -1069,19 +1069,26 @@ const PaymentsPage = ({ appointments, services, payments, setPayments, clients, 
   }, [payments, appointments, services, clients, search, filterMethod, filterState, filterStaff, filterDestino, filterDateFrom, filterDateTo, staffFilter]);
 
   const handleSavePayment = async (payment) => {
-    const row = {
-      id: payment.id,
-      appointment_id: payment.appointmentId || null,
-      service_id: payment.serviceId || null,
-      date: payment.date, time: payment.time,
-      amount: payment.amount, pending: payment.pending, state: payment.state, method: payment.method,
-      destino: payment.destino, reference: payment.reference, observations: payment.observations,
-      registered_by: payment.registeredBy, created_by: user.username, created_at: new Date().toISOString(),
-    };
     const exists = payments.find(p => p.id === payment.id);
     if (exists) {
+      const row = {
+        appointment_id: payment.appointmentId || null,
+        service_id: payment.serviceId || null,
+        date: payment.date, time: payment.time,
+        amount: payment.amount, pending: payment.pending, state: payment.state, method: payment.method,
+        destino: payment.destino, reference: payment.reference, observations: payment.observations,
+        registered_by: payment.registeredBy,
+      };
       await supabase.from('payments').update(row).eq('id', payment.id);
     } else {
+      const row = {
+        appointment_id: payment.appointmentId || null,
+        service_id: payment.serviceId || null,
+        date: payment.date, time: payment.time,
+        amount: payment.amount, pending: payment.pending, state: payment.state, method: payment.method,
+        destino: payment.destino, reference: payment.reference, observations: payment.observations,
+        registered_by: payment.registeredBy, created_by: user.username, created_at: new Date().toISOString(),
+      };
       await supabase.from('payments').insert(row);
     }
     const { data: updated } = await supabase.from('payments').select('*');
