@@ -1247,7 +1247,9 @@ const ClientsPage = ({ clients, setClients, services, payments, user, dark }) =>
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
   const [detail, setDetail] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const canEdit = ["admin", "agenda"].includes(user.role);
+  const canDelete = user.role === "admin";
   const filtered = clients.filter(c => !search || [c.name, c.phone, c.email].some(v => v?.toLowerCase().includes(search.toLowerCase())));
   const handleSave = async (client) => {
     const exists = clients.find(c => c.id === client.id);
@@ -1259,6 +1261,13 @@ const ClientsPage = ({ clients, setClients, services, payments, user, dark }) =>
     const { data: updated } = await supabase.from('clients').select('*');
     setClients(updated || []);
     setShowForm(false); setEditing(null);
+  };
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
+    await supabase.from('clients').delete().eq('id', confirmDelete.id);
+    const { data: updated } = await supabase.from('clients').select('*');
+    setClients(updated || []);
+    setConfirmDelete(null); setDetail(null);
   };
   // Memoizado para no recalcular en cada celda de cada render
   const statsMap = useMemo(() => {
@@ -1297,10 +1306,22 @@ const ClientsPage = ({ clients, setClients, services, payments, user, dark }) =>
         { header: "Total Gastado", nowrap: true, render: r => formatCurrency(getStats(r.id).totalSpent) },
         { header: "Última Visita", nowrap: true, render: r => { const lv = getStats(r.id).lastVisit; return lv ? formatDate(lv) : "—"; }},
       ]} data={filtered} dark={dark} onRowClick={setDetail}
-        actions={canEdit ? (row) => <button onClick={e => { e.stopPropagation(); setEditing(row); setShowForm(true); }} style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.primary, padding: "4px" }}><Icons.Edit /></button> : null} />
+        actions={canEdit ? (row) => (
+          <div style={{ display: "flex", gap: "4px" }}>
+            <button onClick={e => { e.stopPropagation(); setEditing(row); setShowForm(true); }} style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.primary, padding: "4px" }}><Icons.Edit /></button>
+            {canDelete && <button onClick={e => { e.stopPropagation(); setConfirmDelete(row); }} style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, padding: "4px", opacity: 0.7 }} onMouseEnter={e => e.currentTarget.style.opacity="1"} onMouseLeave={e => e.currentTarget.style.opacity="0.7"}><Icons.Trash /></button>}
+          </div>
+        ) : null} />
       <Modal open={showForm} onClose={() => { setShowForm(false); setEditing(null); }} title={editing ? "Editar Cliente" : "Nuevo Cliente"} dark={dark}>
         <ClientForm client={editing} onSave={handleSave} onCancel={() => { setShowForm(false); setEditing(null); }} dark={dark} />
       </Modal>
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(null)}
+        message={confirmDelete ? `¿Eliminar a ${confirmDelete.name}? Esta acción no se puede deshacer.` : ""}
+        dark={dark}
+      />
       <Modal open={!!detail} onClose={() => setDetail(null)} title="Detalle del Cliente" wide dark={dark}>
         {detail && (() => {
           const stats = getStats(detail.id);
