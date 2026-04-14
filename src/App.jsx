@@ -588,6 +588,13 @@ const PaymentForm = ({ payment, appointmentId, maxAmount, appointments, clients,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // Sincronizar cuando cambia el appointmentId o maxAmount desde el padre
+  useEffect(() => {
+    if (appointmentId) {
+      setForm(f => ({ ...f, appointmentId, amount: maxAmount || f.amount }));
+    }
+  }, [appointmentId, maxAmount]);
+
   // Cuando se selecciona un appointment, auto-completar el monto
   const handleApptChange = (apptId) => {
     set("appointmentId", apptId);
