@@ -110,7 +110,7 @@ const mapService = (r) => ({
 });
 
 const mapPayment = (r) => ({
-  id: r.id, serviceId: r.service_id, date: r.date, time: r.time,
+  id: r.id, serviceId: r.service_id, appointmentId: r.appointment_id, date: r.date, time: r.time,
   amount: r.amount, pending: r.pending, state: r.state, method: r.method,
   destino: r.destino, reference: r.reference, observations: r.observations,
   registeredBy: r.registered_by, createdBy: r.created_by, createdAt: r.created_at,
@@ -580,37 +580,52 @@ const ServiceForm = ({ service, onSave, onCancel, clients, dark }) => {
 
 // ─── PAYMENT FORM ───────────────────────────────────────────────────────────
 
-const PaymentForm = ({ payment, serviceId, maxAmount, services, clients, registeredBy, onSave, onCancel, dark }) => {
+const PaymentForm = ({ payment, appointmentId, maxAmount, appointments, clients, registeredBy, onSave, onCancel, dark }) => {
   const [form, setForm] = useState(payment || {
-    serviceId: serviceId || "", date: today(), time: new Date().toTimeString().slice(0, 5),
+    appointmentId: appointmentId || "", date: today(), time: new Date().toTimeString().slice(0, 5),
     amount: maxAmount || 0, pending: 0, state: "pagado", method: "efectivo",
     destino: "centro", reference: "", observations: "",
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // Cuando se selecciona un appointment, auto-completar el monto
+  const handleApptChange = (apptId) => {
+    set("appointmentId", apptId);
+    if (apptId && appointments) {
+      const appt = appointments.find(a => a.id === apptId);
+      if (appt) {
+        const price = MASSAGE_TYPES.find(t => t.id === appt.massageTypeId)?.basePrice || 0;
+        set("amount", price);
+      }
+    }
+  };
+
   const handleSave = () => {
-    if (!form.serviceId) return alert("Seleccioná un servicio");
+    if (!form.appointmentId) return alert("Seleccioná un turno");
     if (!form.amount || form.amount <= 0) return alert("Monto debe ser mayor a 0");
     if (maxAmount != null && form.amount > maxAmount) {
       if (!window.confirm(`El monto ($${form.amount}) supera el saldo pendiente ($${maxAmount}). ¿Continuar?`)) return;
     }
     onSave({ ...form, id: form.id || generateId(), amount: Number(form.amount), registeredBy });
   };
+
   const borderC = dark ? COLORS.borderDark : COLORS.border;
   const mainText = dark ? COLORS.textDark : COLORS.text;
-  // Servicios disponibles para cobrar — incluye realizado, reservado y confirmado
-  const serviceOptions = services ? services
-    .filter(s => ["realizado", "reservado", "confirmado"].includes(s.state))
+
+  // Opciones de appointments para el selector libre
+  const apptOptions = appointments ? appointments
+    .filter(a => a.state !== "cancelado")
     .sort((a, b) => b.date.localeCompare(a.date))
-    .map(s => {
-      const client = clients?.find(c => c.id === s.clientId);
-      const mt = MASSAGE_TYPES.find(t => t.id === s.massageTypeId);
-      return { value: s.id, label: `${formatDate(s.date)} — ${client?.name || "?"} — ${mt?.name || "?"}` };
+    .map(a => {
+      const client = clients?.find(c => c.id === a.clientId);
+      const mt = MASSAGE_TYPES.find(t => t.id === a.massageTypeId);
+      return { value: a.id, label: `${formatDate(a.date)} ${a.time} — ${client?.name || "?"} — ${mt?.name || "?"}` };
     }) : null;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      {serviceOptions && (
-        <Input label="Servicio" value={form.serviceId} onChange={v => set("serviceId", v)} dark={dark} required
-          options={serviceOptions} />
+      {apptOptions && (
+        <Input label="Turno" value={form.appointmentId} onChange={handleApptChange} dark={dark} required options={apptOptions} />
       )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
         <Input label="Fecha" type="date" value={form.date} onChange={v => set("date", v)} dark={dark} />
@@ -979,10 +994,10 @@ const ServicesPage = ({ services, setServices, payments, clients, user, dark }) 
 
 // ─── PAYMENTS PAGE ──────────────────────────────────────────────────────────
 
-const PaymentsPage = ({ services, payments, setPayments, clients, user, staffFilter, dark }) => {
+const PaymentsPage = ({ appointments, services, payments, setPayments, clients, user, staffFilter, dark }) => {
   const [showForm, setShowForm] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
-  const [selectedService, setSelectedService] = useState(null);
+  const [selectedAppt, setSelectedAppt] = useState(null);
   const [search, setSearch] = useState("");
   const [filterMethod, setFilterMethod] = useState("");
   const [filterState, setFilterState] = useState("");
@@ -992,31 +1007,58 @@ const PaymentsPage = ({ services, payments, setPayments, clients, user, staffFil
   const [filterDateTo, setFilterDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState("payments");
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const canEdit = ["admin", "agenda", "masajista"].includes(user.role);
-  const visibleServices = staffFilter ? services.filter(s => s.staffId === staffFilter) : services;
   const borderC = dark ? COLORS.borderDark : COLORS.border;
   const cardBg = dark ? COLORS.cardDark : COLORS.card;
   const mainText = dark ? COLORS.textDark : COLORS.text;
   const mutedText = dark ? COLORS.textMutedDark : COLORS.textMuted;
 
-  const realizedServices = visibleServices.filter(s => s.state === "realizado");
-  const unpaidServices = useMemo(() => {
-    return realizedServices.filter(s => {
-      const paid = _.sumBy(payments.filter(p => p.serviceId === s.id && p.state !== "anulado"), "amount");
-      return paid < s.finalPrice;
-    }).map(s => {
-      const paid = _.sumBy(payments.filter(p => p.serviceId === s.id && p.state !== "anulado"), "amount");
-      return { ...s, paid, pending: s.finalPrice - paid };
-    });
-  }, [realizedServices, payments]);
+  // Precio de un appointment según su tipo de masaje
+  const apptPrice = (appt) => MASSAGE_TYPES.find(t => t.id === appt.massageTypeId)?.basePrice || 0;
+
+  // Helper: para un pago, encontrar su appointment (primero por appointmentId, luego por serviceId legacy)
+  const getApptForPayment = (p) => {
+    if (p.appointmentId) return appointments.find(a => a.id === p.appointmentId);
+    // fallback: buscar en services legacy
+    return null;
+  };
+  const getServiceForPayment = (p) => {
+    if (p.appointmentId) return null;
+    return services.find(s => s.id === p.serviceId);
+  };
+
+  // Fuente unificada: appointments (filtrados por staff si corresponde)
+  const visibleAppts = staffFilter
+    ? appointments.filter(a => a.staffId === staffFilter)
+    : appointments;
+
+  // Appointments pendientes de cobro (no cancelados, con saldo pendiente)
+  const unpaidAppts = useMemo(() => {
+    return visibleAppts
+      .filter(a => a.state !== "cancelado")
+      .map(a => {
+        const price = apptPrice(a);
+        const paid = _.sumBy(
+          payments.filter(p => (p.appointmentId === a.id || p.serviceId === a.id) && p.state !== "anulado"),
+          "amount"
+        );
+        return { ...a, finalPrice: price, paid, pending: Math.max(0, price - paid) };
+      })
+      .filter(a => a.pending > 0)
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [visibleAppts, payments]);
 
   const filteredPayments = useMemo(() => {
     return payments.filter(p => {
-      const svc = services.find(s => s.id === p.serviceId);
-      if (staffFilter && svc?.staffId !== staffFilter) return false;
-      const client = svc ? clients.find(c => c.id === svc.clientId) : null;
+      const appt = getApptForPayment(p);
+      const svc = getServiceForPayment(p);
+      const staffId = appt?.staffId || svc?.staffId;
+      const clientId = appt?.clientId || svc?.clientId;
+      if (staffFilter && staffId !== staffFilter) return false;
+      const client = clients.find(c => c.id === clientId);
       const searchMatch = !search || [client?.name, p.reference, p.method].some(v => v?.toLowerCase().includes(search.toLowerCase()));
-      const staffMatch = !filterStaff || svc?.staffId === filterStaff;
+      const staffMatch = !filterStaff || staffId === filterStaff;
       const destinoMatch = !filterDestino || p.destino === filterDestino;
       return searchMatch && staffMatch && destinoMatch
         && (!filterMethod || p.method === filterMethod)
@@ -1024,13 +1066,14 @@ const PaymentsPage = ({ services, payments, setPayments, clients, user, staffFil
         && (!filterDateFrom || p.date >= filterDateFrom)
         && (!filterDateTo || p.date <= filterDateTo);
     }).sort((a, b) => b.date.localeCompare(a.date));
-  }, [payments, services, clients, search, filterMethod, filterState, filterStaff, filterDestino, filterDateFrom, filterDateTo, staffFilter]);
-
-  const [deleteTarget, setDeleteTarget] = useState(null);
+  }, [payments, appointments, services, clients, search, filterMethod, filterState, filterStaff, filterDestino, filterDateFrom, filterDateTo, staffFilter]);
 
   const handleSavePayment = async (payment) => {
     const row = {
-      id: payment.id, service_id: payment.serviceId, date: payment.date, time: payment.time,
+      id: payment.id,
+      appointment_id: payment.appointmentId || null,
+      service_id: payment.serviceId || null,
+      date: payment.date, time: payment.time,
       amount: payment.amount, pending: payment.pending, state: payment.state, method: payment.method,
       destino: payment.destino, reference: payment.reference, observations: payment.observations,
       registered_by: payment.registeredBy, created_by: user.username, created_at: new Date().toISOString(),
@@ -1043,7 +1086,7 @@ const PaymentsPage = ({ services, payments, setPayments, clients, user, staffFil
     }
     const { data: updated } = await supabase.from('payments').select('*');
     setPayments((updated || []).map(mapPayment));
-    setShowForm(false); setShowNewForm(false); setSelectedService(null);
+    setShowForm(false); setShowNewForm(false); setSelectedAppt(null);
   };
 
   const handleDeletePayment = async () => {
@@ -1066,11 +1109,11 @@ const PaymentsPage = ({ services, payments, setPayments, clients, user, staffFil
         <div>
           <h2 style={{ fontFamily: "var(--font-display)", fontSize: "26px", fontWeight: 600, color: mainText }}>Cobros</h2>
           <p style={{ fontSize: "13px", color: mutedText }}>
-            {viewMode === "payments" ? `${filteredPayments.length} pagos — Total: ${formatCurrency(totalFiltered)}` : `${unpaidServices.length} pendientes`}
+            {viewMode === "payments" ? `${filteredPayments.length} pagos — Total: ${formatCurrency(totalFiltered)}` : `${unpaidAppts.length} pendientes`}
           </p>
         </div>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-          <Tabs tabs={[{ id: "payments", label: "Pagos" }, { id: "unpaid", label: `Pendientes (${unpaidServices.length})` }]} active={viewMode} onChange={setViewMode} dark={dark} />
+          <Tabs tabs={[{ id: "payments", label: "Pagos" }, { id: "unpaid", label: `Pendientes (${unpaidAppts.length})` }]} active={viewMode} onChange={setViewMode} dark={dark} />
           <Button variant="secondary" icon={<Icons.Filter />} onClick={() => setShowFilters(!showFilters)} size="sm">
             Filtros{hasFilters ? " ●" : ""}
           </Button>
@@ -1114,8 +1157,24 @@ const PaymentsPage = ({ services, payments, setPayments, clients, user, staffFil
         <Table columns={[
           { header: "Fecha", nowrap: true, render: r => formatDate(r.date) },
           { header: "Hora", nowrap: true, render: r => r.time || "—" },
-          { header: "Cliente", render: r => { const svc = services.find(s => s.id === r.serviceId); return clients.find(c => c.id === svc?.clientId)?.name || "—"; }},
-          { header: "Masajista", render: r => { const svc = services.find(s => s.id === r.serviceId); return STAFF.find(s => s.id === svc?.staffId)?.name || "—"; }},
+          { header: "Cliente", render: r => {
+            const appt = getApptForPayment(r);
+            const svc = getServiceForPayment(r);
+            const clientId = appt?.clientId || svc?.clientId;
+            return clients.find(c => c.id === clientId)?.name || "—";
+          }},
+          { header: "Masajista", render: r => {
+            const appt = getApptForPayment(r);
+            const svc = getServiceForPayment(r);
+            const staffId = appt?.staffId || svc?.staffId;
+            return STAFF.find(s => s.id === staffId)?.name || "—";
+          }},
+          { header: "Tipo", render: r => {
+            const appt = getApptForPayment(r);
+            const svc = getServiceForPayment(r);
+            const typeId = appt?.massageTypeId || svc?.massageTypeId;
+            return MASSAGE_TYPES.find(t => t.id === typeId)?.name || "—";
+          }},
           { header: "Monto", nowrap: true, render: r => <strong style={{ color: COLORS.success }}>{formatCurrency(r.amount)}</strong> },
           { header: "Método", render: r => { const m = PAYMENT_METHODS.find(pm => pm.id === r.method); return m ? `${m.icon} ${m.name}` : r.method; }},
           { header: "Destino", render: r => r.destino === "masajista" ? <span style={{ color: COLORS.success, fontWeight: 600 }}>👐 Masajista</span> : <span style={{ color: COLORS.primary, fontWeight: 600 }}>🏢 Centro</span> },
@@ -1133,27 +1192,43 @@ const PaymentsPage = ({ services, payments, setPayments, clients, user, staffFil
       ) : (
         <Table columns={[
           { header: "Fecha", nowrap: true, render: r => formatDate(r.date) },
+          { header: "Hora", nowrap: true, render: r => r.time || "—" },
           { header: "Cliente", render: r => clients.find(c => c.id === r.clientId)?.name || "—" },
           { header: "Masajista", render: r => STAFF.find(s => s.id === r.staffId)?.name || "—" },
           { header: "Tipo", render: r => MASSAGE_TYPES.find(t => t.id === r.massageTypeId)?.name || "—" },
           { header: "Total", nowrap: true, render: r => formatCurrency(r.finalPrice) },
           { header: "Pagado", nowrap: true, render: r => formatCurrency(r.paid) },
           { header: "Pendiente", nowrap: true, render: r => <strong style={{ color: COLORS.danger }}>{formatCurrency(r.pending)}</strong> },
-        ]} data={unpaidServices} dark={dark}
-          actions={canEdit ? (row) => <Button size="sm" variant="success" onClick={e => { e.stopPropagation(); setSelectedService(row); setShowForm(true); }}>Cobrar</Button> : null} />
+        ]} data={unpaidAppts} dark={dark}
+          actions={canEdit ? (row) => <Button size="sm" variant="success" onClick={e => { e.stopPropagation(); setSelectedAppt(row); setShowForm(true); }}>Cobrar</Button> : null} />
       )}
 
       {/* Modal cobro desde Pendientes */}
-      <Modal open={showForm} onClose={() => { setShowForm(false); setSelectedService(null); }} title="Registrar Cobro" dark={dark}>
-        {selectedService && <PaymentForm serviceId={selectedService.id} maxAmount={selectedService.pending} registeredBy={user.name} onSave={handleSavePayment} onCancel={() => { setShowForm(false); setSelectedService(null); }} dark={dark} />}
+      <Modal open={showForm} onClose={() => { setShowForm(false); setSelectedAppt(null); }} title="Registrar Cobro" dark={dark}>
+        {selectedAppt && (
+          <PaymentForm
+            appointmentId={selectedAppt.id}
+            maxAmount={selectedAppt.pending}
+            registeredBy={user.name}
+            onSave={handleSavePayment}
+            onCancel={() => { setShowForm(false); setSelectedAppt(null); }}
+            dark={dark}
+          />
+        )}
       </Modal>
 
-      {/* Modal nuevo cobro libre */}
+      {/* Modal nuevo cobro libre — lista appointments */}
       <Modal open={showNewForm} onClose={() => setShowNewForm(false)} title="Nuevo Cobro" dark={dark}>
-        <PaymentForm services={services} clients={clients} registeredBy={user.name} onSave={handleSavePayment} onCancel={() => setShowNewForm(false)} dark={dark} />
+        <PaymentForm
+          appointments={appointments}
+          clients={clients}
+          registeredBy={user.name}
+          onSave={handleSavePayment}
+          onCancel={() => setShowNewForm(false)}
+          dark={dark}
+        />
       </Modal>
 
-      {/* Confirmar eliminación */}
       <ConfirmDialog
         open={!!deleteTarget}
         onConfirm={handleDeletePayment}
@@ -1260,12 +1335,10 @@ const ClientsPage = ({ clients, setClients, services, payments, user, dark }) =>
 
 // ─── REPORTS PAGE ───────────────────────────────────────────────────────────
 
-const ReportsPage = ({ services, payments, setPayments, clients, user, dark }) => {
+const ReportsPage = ({ appointments, services, payments, setPayments, clients, user, dark }) => {
   const [tab, setTab] = useState("masajes");
   const [periodo, setPeriodo] = useState("mensual");
 
-  // ── Rango de fechas según período ──
-  // dateRange se recalcula en cada render para que nunca quede stale
   const dateRange = (() => {
     const now = new Date();
     let from;
@@ -1276,17 +1349,22 @@ const ReportsPage = ({ services, payments, setPayments, clients, user, dark }) =
     return { from: localDateStr(from), to: localDateStr(now) };
   })();
 
+  // Appointments del período (no cancelados) — fuente principal
   const realized = useMemo(() => {
     const { from, to } = dateRange;
-    return services.filter(s => s.state === "realizado" && s.date >= from && s.date <= to);
-  }, [services, periodo]);
+    return appointments
+      .filter(a => a.state !== "cancelado" && a.date >= from && a.date <= to)
+      .map(a => ({ ...a, finalPrice: MASSAGE_TYPES.find(t => t.id === a.massageTypeId)?.basePrice || 0 }));
+  }, [appointments, periodo]);
+
+  // Helper: un pago corresponde a un appointment si appointmentId coincide o serviceId coincide (legacy)
+  const payBelongsTo = (p, apptId) => p.appointmentId === apptId || p.serviceId === apptId;
 
   const validPay = useMemo(() => {
     const { from, to } = dateRange;
     return payments.filter(p => p.state !== "anulado" && p.date >= from && p.date <= to);
   }, [payments, periodo]);
 
-  // KPIs resumen
   const totalMasajes = realized.length;
   const totalIngresos = _.sumBy(validPay, "amount");
   const ticketPromedio = totalMasajes > 0 ? Math.round(totalIngresos / totalMasajes) : 0;
@@ -1298,13 +1376,13 @@ const ReportsPage = ({ services, payments, setPayments, clients, user, dark }) =
 
   const byStaff = useMemo(() => _(realized).countBy("staffId").entries().map(([id, count]) => ({
     name: STAFF.find(s => s.id === id)?.name || id, count,
-    revenue: _.sumBy(validPay.filter(p => { const svc = realized.find(s => s.id === p.serviceId); return svc?.staffId === id; }), "amount"),
+    revenue: _.sumBy(validPay.filter(p => { const a = realized.find(s => payBelongsTo(p, s.id)); return a?.staffId === id; }), "amount"),
   })).orderBy("count", "desc").value(), [realized, validPay]);
 
   const topClients = useMemo(() => _(realized).countBy("clientId").entries().map(([id, count]) => ({
     name: clients.find(c => c.id === id)?.name || id, visits: count,
-    spent: _.sumBy(validPay.filter(p => { const svc = services.find(s => s.id === p.serviceId); return svc?.clientId === id; }), "amount"),
-  })).orderBy("visits", "desc").take(10).value(), [realized, validPay, clients, services]);
+    spent: _.sumBy(validPay.filter(p => { const a = realized.find(s => payBelongsTo(p, s.id)); return a?.clientId === id; }), "amount"),
+  })).orderBy("visits", "desc").take(10).value(), [realized, validPay, clients]);
 
   const incomeByMethod = useMemo(() => _(validPay).groupBy("method").entries().map(([id, pays]) => ({
     name: PAYMENT_METHODS.find(m => m.id === id)?.name || id, total: _.sumBy(pays, "amount"), count: pays.length,
@@ -1502,36 +1580,35 @@ const ReportsPage = ({ services, payments, setPayments, clients, user, dark }) =
         </div>
       )}
 
-      {tab === "liquidaciones" && <LiquidacionesTab validPay={validPay} allPayments={payments} setPayments={setPayments} services={services} allRealized={services.filter(s => s.state === "realizado")} realized={realized} clients={clients} user={user} dark={dark} chartStyle={chartStyle} mainText={mainText} mutedText={mutedText} borderC={borderC} cardBg={cardBg} />}
+      {tab === "liquidaciones" && <LiquidacionesTab validPay={validPay} allPayments={payments} setPayments={setPayments} appointments={appointments} realized={realized} clients={clients} user={user} dark={dark} chartStyle={chartStyle} mainText={mainText} mutedText={mutedText} borderC={borderC} cardBg={cardBg} />}
     </div>
   );
 };
 
 // ─── LIQUIDACIONES TAB ───────────────────────────────────────────────────────
 
-const LiquidacionesTab = ({ validPay, allPayments, setPayments, services, allRealized, realized, clients, user, dark, chartStyle, mainText, mutedText, borderC, cardBg }) => {
+const LiquidacionesTab = ({ validPay, allPayments, setPayments, appointments, realized, clients, user, dark, chartStyle, mainText, mutedText, borderC, cardBg }) => {
   const [pct, setPct] = useState(50);
-  const [selectedStaff, setSelectedStaff] = useState(null); // masajista seleccionada para el modal
+  const [selectedStaff, setSelectedStaff] = useState(null);
   const [showPayForm, setShowPayForm] = useState(false);
-  const [selectedService, setSelectedService] = useState(null);
+  const [selectedAppt, setSelectedAppt] = useState(null);
+
+  // Helper: un pago corresponde a un appointment
+  const payBelongsTo = (p, apptId) => p.appointmentId === apptId || p.serviceId === apptId;
 
   const liquidaciones = useMemo(() => {
     return STAFF.map(staff => {
-      // Usamos allRealized para mostrar TODOS los servicios de la masajista sin filtro de período
-      // pero para el resumen del período usamos realized (filtrado)
-      const svcIdsPeriod = realized.filter(s => s.staffId === staff.id).map(s => s.id);
-      const totalServicio = _.sumBy(realized.filter(s => s.staffId === staff.id), "finalPrice");
-
-      const pagosStaff = validPay.filter(p => svcIdsPeriod.includes(p.serviceId));
+      const apptsPeriod = realized.filter(a => a.staffId === staff.id);
+      const totalServicio = _.sumBy(apptsPeriod, "finalPrice");
+      const pagosStaff = validPay.filter(p => apptsPeriod.some(a => payBelongsTo(p, a.id)));
       const cobradoPorMasajista = _.sumBy(pagosStaff.filter(p => p.destino === "masajista"), "amount");
       const cobradoPorCentro = _.sumBy(pagosStaff.filter(p => !p.destino || p.destino === "centro"), "amount");
       const totalCobrado = cobradoPorMasajista + cobradoPorCentro;
       const corresponde = Math.round(totalServicio * pct / 100);
       const saldo = corresponde - cobradoPorMasajista;
-
       return {
         id: staff.id, name: staff.name,
-        servicios: svcIdsPeriod.length,
+        servicios: apptsPeriod.length,
         totalServicio, cobradoPorMasajista, cobradoPorCentro, totalCobrado, corresponde, saldo,
       };
     }).filter(r => r.servicios > 0);
@@ -1545,27 +1622,26 @@ const LiquidacionesTab = ({ validPay, allPayments, setPayments, services, allRea
     corresponde: _.sumBy(liquidaciones, "corresponde"),
   }), [liquidaciones]);
 
-  // Detalle del modal — respeta el período seleccionado (usa realized y validPay, ya filtrados)
   const getStaffDetail = useCallback((staffId) => {
-    const svcs = realized.filter(s => s.staffId === staffId).sort((a, b) => b.date.localeCompare(a.date));
-    const svcIds = svcs.map(s => s.id);
-    const pagos = validPay.filter(p => svcIds.includes(p.serviceId));
-
-    return svcs.map(svc => {
-      const client = clients.find(c => c.id === svc.clientId);
-      const mt = MASSAGE_TYPES.find(t => t.id === svc.massageTypeId);
-      const svcPagos = pagos.filter(p => p.serviceId === svc.id);
-      const totalPagado = _.sumBy(svcPagos, "amount");
-      const cobradoMasajista = _.sumBy(svcPagos.filter(p => p.destino === "masajista"), "amount");
-      const cobradoCentro = _.sumBy(svcPagos.filter(p => !p.destino || p.destino === "centro"), "amount");
-      const pendiente = Math.max(0, svc.finalPrice - totalPagado);
-      return { ...svc, clientName: client?.name || "—", typeName: mt?.name || "—", totalPagado, cobradoMasajista, cobradoCentro, pendiente, pagos: svcPagos };
+    const appts = realized.filter(a => a.staffId === staffId).sort((a, b) => b.date.localeCompare(a.date));
+    return appts.map(appt => {
+      const client = clients.find(c => c.id === appt.clientId);
+      const mt = MASSAGE_TYPES.find(t => t.id === appt.massageTypeId);
+      const apptPagos = validPay.filter(p => payBelongsTo(p, appt.id));
+      const totalPagado = _.sumBy(apptPagos, "amount");
+      const cobradoMasajista = _.sumBy(apptPagos.filter(p => p.destino === "masajista"), "amount");
+      const cobradoCentro = _.sumBy(apptPagos.filter(p => !p.destino || p.destino === "centro"), "amount");
+      const pendiente = Math.max(0, appt.finalPrice - totalPagado);
+      return { ...appt, clientName: client?.name || "—", typeName: mt?.name || "—", totalPagado, cobradoMasajista, cobradoCentro, pendiente, pagos: apptPagos };
     });
   }, [realized, validPay, clients]);
 
   const handleSavePago = async (payment) => {
     const row = {
-      id: payment.id, service_id: payment.serviceId, date: payment.date, time: payment.time,
+      id: payment.id,
+      appointment_id: payment.appointmentId || null,
+      service_id: null,
+      date: payment.date, time: payment.time,
       amount: payment.amount, pending: payment.pending, state: payment.state, method: payment.method,
       destino: payment.destino, reference: payment.reference, observations: payment.observations,
       registered_by: payment.registeredBy, created_by: user?.username || "admin", created_at: new Date().toISOString(),
@@ -1579,7 +1655,7 @@ const LiquidacionesTab = ({ validPay, allPayments, setPayments, services, allRea
     const { data: updated } = await supabase.from('payments').select('*');
     setPayments((updated || []).map(mapPayment));
     setShowPayForm(false);
-    setSelectedService(null);
+    setSelectedAppt(null);
   };
 
   const rowStyle = (i, clickable) => ({
@@ -1699,7 +1775,7 @@ const LiquidacionesTab = ({ validPay, allPayments, setPayments, services, allRea
       </div>
 
       {/* ── MODAL DETALLE MASAJISTA ── */}
-      <Modal open={!!selectedStaff} onClose={() => { setSelectedStaff(null); setShowPayForm(false); setSelectedService(null); }} title={`Detalle — ${selectedStaff?.name}`} wide dark={dark}>
+      <Modal open={!!selectedStaff} onClose={() => { setSelectedStaff(null); setShowPayForm(false); setSelectedAppt(null); }} title={`Detalle — ${selectedStaff?.name}`} wide dark={dark}>
         {selectedStaff && (() => {
           const liq = staffLiq;
           const saldoAbs = liq ? Math.abs(liq.saldo) : 0;
@@ -1764,7 +1840,7 @@ const LiquidacionesTab = ({ validPay, allPayments, setPayments, services, allRea
                               <Badge color={COLORS.success}>Cobrado</Badge>
                             )}
                             <button
-                              onClick={() => { setSelectedService(svc); setShowPayForm(true); }}
+                              onClick={() => { setSelectedAppt(svc); setShowPayForm(true); }}
                               title="Registrar cobro"
                               style={{ background: COLORS.success + "18", border: `1px solid ${COLORS.success}40`, borderRadius: "6px", padding: "4px 10px", cursor: "pointer", fontSize: "11px", fontWeight: 600, color: COLORS.success, fontFamily: "var(--font-body)" }}
                             >+ Cobro</button>
@@ -1801,20 +1877,20 @@ const LiquidacionesTab = ({ validPay, allPayments, setPayments, services, allRea
               </div>
 
               {/* Mini formulario de cobro embebido */}
-              {showPayForm && selectedService && (
+              {showPayForm && selectedAppt && (
                 <div style={{ border: `2px solid ${COLORS.success}40`, borderRadius: "12px", padding: "16px", background: dark ? "rgba(90,138,94,0.05)" : "rgba(90,138,94,0.04)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
                     <h4 style={{ fontSize: "14px", fontWeight: 600, color: mainText }}>
-                      Registrar cobro — {selectedService.clientName} ({formatDate(selectedService.date)})
+                      Registrar cobro — {selectedAppt.clientName} ({formatDate(selectedAppt.date)})
                     </h4>
-                    <button onClick={() => { setShowPayForm(false); setSelectedService(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: mutedText, padding: "4px" }}><Icons.Close /></button>
+                    <button onClick={() => { setShowPayForm(false); setSelectedAppt(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: mutedText, padding: "4px" }}><Icons.Close /></button>
                   </div>
                   <PaymentForm
-                    serviceId={selectedService.id}
-                    maxAmount={selectedService.pendiente > 0 ? selectedService.pendiente : undefined}
+                    appointmentId={selectedAppt.id}
+                    maxAmount={selectedAppt.pendiente > 0 ? selectedAppt.pendiente : undefined}
                     registeredBy={user?.name || "admin"}
                     onSave={handleSavePago}
-                    onCancel={() => { setShowPayForm(false); setSelectedService(null); }}
+                    onCancel={() => { setShowPayForm(false); setSelectedAppt(null); }}
                     dark={dark}
                   />
                 </div>
@@ -2743,9 +2819,9 @@ export default function App() {
     switch (activePage) {
       case "dashboard": return <DashboardPage services={data.services} payments={data.payments} clients={data.clients} dark={dark} />;
       case "services": return <ServicesPage services={data.services} setServices={updateField("services")} payments={data.payments} clients={data.clients} user={currentUser} dark={dark} />;
-      case "payments": return <PaymentsPage services={data.services} payments={data.payments} setPayments={updateField("payments")} clients={data.clients} user={currentUser} staffFilter={role === "masajista" ? staffId : null} dark={dark} />;
+      case "payments": return <PaymentsPage appointments={data.appointments || []} services={data.services} payments={data.payments} setPayments={updateField("payments")} clients={data.clients} user={currentUser} staffFilter={role === "masajista" ? staffId : null} dark={dark} />;
       case "clients": return <ClientsPage clients={data.clients} setClients={updateField("clients")} services={data.services} payments={data.payments} user={currentUser} dark={dark} />;
-      case "reports": return <ReportsPage services={data.services} payments={data.payments} setPayments={updateField("payments")} clients={data.clients} user={currentUser} dark={dark} />;
+      case "reports": return <ReportsPage appointments={data.appointments || []} services={data.services} payments={data.payments} setPayments={updateField("payments")} clients={data.clients} user={currentUser} dark={dark} />;
       case "appointments": return <AppointmentsPage appointments={data.appointments || []} setAppointments={updateField("appointments")} clients={data.clients} setClients={updateField("clients")} user={currentUser} staffFilter={role === "masajista" ? staffId : null} dark={dark} />;
       case "settings": return <SettingsPage user={currentUser} dark={dark} data={data} />;
       default: return null;
