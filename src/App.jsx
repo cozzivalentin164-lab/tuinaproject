@@ -588,7 +588,7 @@ const PaymentForm = ({ payment, appointmentId, maxAmount, appointments, clients,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  // Sincronizar cuando cambia el appointmentId o maxAmount desde el padre
+  // Sincronizar appointmentId y monto cuando el padre los actualiza
   useEffect(() => {
     if (appointmentId) {
       setForm(f => ({ ...f, appointmentId, amount: maxAmount || f.amount }));
@@ -1076,31 +1076,39 @@ const PaymentsPage = ({ appointments, services, payments, setPayments, clients, 
   }, [payments, appointments, services, clients, search, filterMethod, filterState, filterStaff, filterDestino, filterDateFrom, filterDateTo, staffFilter]);
 
   const handleSavePayment = async (payment) => {
-    const exists = payments.find(p => p.id === payment.id);
-    if (exists) {
-      const row = {
-        appointment_id: payment.appointmentId || null,
-        service_id: payment.serviceId || null,
-        date: payment.date, time: payment.time,
-        amount: payment.amount, pending: payment.pending, state: payment.state, method: payment.method,
-        destino: payment.destino, reference: payment.reference, observations: payment.observations,
-        registered_by: payment.registeredBy,
-      };
-      await supabase.from('payments').update(row).eq('id', payment.id);
-    } else {
-      const row = {
-        appointment_id: payment.appointmentId || null,
-        service_id: payment.serviceId || null,
-        date: payment.date, time: payment.time,
-        amount: payment.amount, pending: payment.pending, state: payment.state, method: payment.method,
-        destino: payment.destino, reference: payment.reference, observations: payment.observations,
-        registered_by: payment.registeredBy, created_by: user.username, created_at: new Date().toISOString(),
-      };
-      await supabase.from('payments').insert(row);
+    try {
+      const exists = payments.find(p => p.id === payment.id);
+      if (exists) {
+        const row = {
+          appointment_id: payment.appointmentId || null,
+          service_id: payment.serviceId || null,
+          date: payment.date, time: payment.time,
+          amount: payment.amount, pending: payment.pending, state: payment.state, method: payment.method,
+          destino: payment.destino, reference: payment.reference, observations: payment.observations,
+          registered_by: payment.registeredBy,
+        };
+        const { error } = await supabase.from('payments').update(row).eq('id', payment.id);
+        if (error) { console.error("Error al actualizar pago:", error); alert("Error al actualizar: " + error.message); return; }
+      } else {
+        const row = {
+          appointment_id: payment.appointmentId || null,
+          service_id: payment.serviceId || null,
+          date: payment.date, time: payment.time,
+          amount: payment.amount, pending: payment.pending, state: payment.state, method: payment.method,
+          destino: payment.destino, reference: payment.reference, observations: payment.observations,
+          registered_by: payment.registeredBy, created_by: user.username, created_at: new Date().toISOString(),
+        };
+        const { error } = await supabase.from('payments').insert(row);
+        if (error) { console.error("Error al insertar pago:", error); alert("Error al registrar cobro: " + error.message); return; }
+      }
+      const { data: updated, error: fetchError } = await supabase.from('payments').select('*');
+      if (fetchError) { console.error("Error al recargar pagos:", fetchError); return; }
+      setPayments((updated || []).map(mapPayment));
+      setShowForm(false); setShowNewForm(false); setSelectedAppt(null);
+    } catch (e) {
+      console.error("Error inesperado en cobro:", e);
+      alert("Error inesperado: " + e.message);
     }
-    const { data: updated } = await supabase.from('payments').select('*');
-    setPayments((updated || []).map(mapPayment));
-    setShowForm(false); setShowNewForm(false); setSelectedAppt(null);
   };
 
   const handleDeletePayment = async () => {
