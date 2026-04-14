@@ -48,11 +48,10 @@ const STAFF = [
   { id: "s1", name: "Flor", specialty: "Terapéutico" },
   { id: "s2", name: "Luciana", specialty: "Deportivo" },
   { id: "s3", name: "Mariela", specialty: "Relajante" },
-  { id: "s4", name: "Gabriela", specialty: "Premium" },
   { id: "s5", name: "Rocio", specialty: "Estética" },
 ];
 
-const ROOMS = ["Sala 1", "Sala 2", "Sala 3", "Sala VIP"];
+const ROOMS = ["Sala 1", "Sala 2"];
 
 // ─── UTILITY FUNCTIONS ──────────────────────────────────────────────────────
 
@@ -598,12 +597,15 @@ const PaymentForm = ({ payment, serviceId, maxAmount, services, clients, registe
   };
   const borderC = dark ? COLORS.borderDark : COLORS.border;
   const mainText = dark ? COLORS.textDark : COLORS.text;
-  // Servicios realizados disponibles para cobrar (cuando se abre desde "Nuevo Cobro")
-  const serviceOptions = services ? services.filter(s => s.state === "realizado").map(s => {
-    const client = clients?.find(c => c.id === s.clientId);
-    const mt = MASSAGE_TYPES.find(t => t.id === s.massageTypeId);
-    return { value: s.id, label: `${formatDate(s.date)} — ${client?.name || "?"} — ${mt?.name || "?"}` };
-  }) : null;
+  // Servicios disponibles para cobrar — incluye realizado, reservado y confirmado
+  const serviceOptions = services ? services
+    .filter(s => ["realizado", "reservado", "confirmado"].includes(s.state))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map(s => {
+      const client = clients?.find(c => c.id === s.clientId);
+      const mt = MASSAGE_TYPES.find(t => t.id === s.massageTypeId);
+      return { value: s.id, label: `${formatDate(s.date)} — ${client?.name || "?"} — ${mt?.name || "?"}` };
+    }) : null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       {serviceOptions && (
@@ -648,18 +650,37 @@ const PaymentForm = ({ payment, serviceId, maxAmount, services, clients, registe
 
 // ─── CLIENT FORM ────────────────────────────────────────────────────────────
 
+const formatPhone = (raw) => {
+  // Normaliza a formato internacional argentino: +54 9 XXXXXXXXXX
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  // Si ya empieza con 54 y tiene suficientes dígitos, usar tal cual
+  if (digits.startsWith("54") && digits.length >= 12) return "+" + digits;
+  // Si empieza con 0 (ej: 0343...) → quitar el 0 y anteponer +549
+  if (digits.startsWith("0")) return "+549" + digits.slice(1);
+  // Si empieza con 15 → número local sin código de área, devolver como está
+  // Si tiene 10 dígitos (ej: 3436135490) → anteponer +549
+  if (digits.length === 10) return "+549" + digits;
+  // Caso genérico
+  return "+" + digits;
+};
+
 const ClientForm = ({ client, onSave, onCancel, dark }) => {
   const [form, setForm] = useState(client || { name: "", phone: "", email: "", birthdate: "", notes: "" });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const handleSave = () => {
     if (!form.name) return alert("El nombre es obligatorio");
-    onSave({ ...form, id: form.id || generateId() });
+    const phoneFormatted = form.phone ? formatPhone(form.phone) : "";
+    onSave({ ...form, phone: phoneFormatted, id: form.id || generateId() });
   };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <Input label="Nombre Completo" value={form.name} onChange={v => set("name", v)} required dark={dark} />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-        <Input label="Teléfono" value={form.phone} onChange={v => set("phone", v)} dark={dark} />
+        <div>
+          <Input label="Teléfono" value={form.phone} onChange={v => set("phone", v)} dark={dark} placeholder="Ej: 3436135490" />
+          {form.phone && <span style={{ fontSize: "11px", color: COLORS.textMuted, marginTop: "3px", display: "block" }}>Se guardará como: {formatPhone(form.phone)}</span>}
+        </div>
         <Input label="Email" value={form.email} onChange={v => set("email", v)} type="email" dark={dark} />
       </div>
       <Input label="Fecha de Nacimiento" type="date" value={form.birthdate} onChange={v => set("birthdate", v)} dark={dark} />
@@ -819,15 +840,19 @@ const ServicesPage = ({ services, setServices, payments, clients, user, dark }) 
   const [confirmDelete, setConfirmDelete] = useState(null);
   const canEdit = ["admin", "agenda"].includes(user.role);
   const canDelete = user.role === "admin";
+  const todayStr = today();
   const filtered = useMemo(() => {
     return services.filter(s => {
       const client = clients.find(c => c.id === s.clientId);
       const staff = STAFF.find(st => st.id === s.staffId);
       const mt = MASSAGE_TYPES.find(t => t.id === s.massageTypeId);
       const searchMatch = !search || [client?.name, staff?.name, mt?.name, s.date, s.id].some(v => v?.toLowerCase().includes(search.toLowerCase()));
-      return searchMatch && (!filterType || s.massageTypeId === filterType) && (!filterState || s.state === filterState) && (!filterStaff || s.staffId === filterStaff) && (!filterDateFrom || s.date >= filterDateFrom) && (!filterDateTo || s.date <= filterDateTo);
+      // Por defecto solo mostrar servicios de fechas anteriores a hoy con estado reservado
+      const dateOk = s.date < todayStr;
+      const stateOk = !filterState ? s.state === "reservado" : s.state === filterState;
+      return searchMatch && dateOk && stateOk && (!filterType || s.massageTypeId === filterType) && (!filterStaff || s.staffId === filterStaff) && (!filterDateFrom || s.date >= filterDateFrom) && (!filterDateTo || s.date <= filterDateTo);
     }).sort((a, b) => b.date.localeCompare(a.date) || (b.startTime || "").localeCompare(a.startTime || ""));
-  }, [services, clients, search, filterType, filterState, filterStaff, filterDateFrom, filterDateTo]);
+  }, [services, clients, search, filterType, filterState, filterStaff, filterDateFrom, filterDateTo, todayStr]);
   const handleSave = async (svc) => {
     const row = {
       id: svc.id, date: svc.date, start_time: svc.startTime, end_time: svc.endTime,
@@ -873,7 +898,7 @@ const ServicesPage = ({ services, setServices, payments, clients, user, dark }) 
     <div className="animate-fade" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
         <div>
-          <h2 style={{ fontFamily: "var(--font-display)", fontSize: "26px", fontWeight: 600, color: dark ? COLORS.textDark : COLORS.text }}>Masajes Realizados</h2>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: "26px", fontWeight: 600, color: dark ? COLORS.textDark : COLORS.text }}>Masajes Reservados</h2>
           <p style={{ fontSize: "13px", color: dark ? COLORS.textMutedDark : COLORS.textMuted }}>{filtered.length} registros</p>
         </div>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -1808,10 +1833,7 @@ const LiquidacionesTab = ({ validPay, allPayments, setPayments, services, allRea
 const STAFF_COLORS = ["#7c6a56", "#5a8a5e", "#5a7a9a", "#b85450", "#8b7ab0", "#c49a3c", "#6aada0"];
 const APPT_STATES = [
   { id: "reservado", name: "Reservado", color: "#5a7a9a" },
-  { id: "confirmado", name: "Confirmado", color: "#5a8a5e" },
-  { id: "realizado", name: "Realizado", color: "#22c55e" },
   { id: "cancelado", name: "Cancelado", color: "#ef4444" },
-  { id: "no_asistio", name: "No Asistió", color: "#94a3b8" },
 ];
 const getStaffColor = (staffId) => {
   const idx = STAFF.findIndex(s => s.id === staffId);
@@ -2163,7 +2185,7 @@ const MonthView = ({ year, month, appointments, clients, dark, onClickAppt, toda
   );
 };
 
-const AppointmentsPage = ({ appointments, setAppointments, clients, user, staffFilter, dark }) => {
+const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, user, staffFilter, dark }) => {
   const visibleAppointments = staffFilter ? appointments.filter(a => a.staffId === staffFilter) : appointments;
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -2173,6 +2195,7 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, user, staffF
   const [currentDate, setCurrentDate] = useState(new Date());
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [listFilter, setListFilter] = useState({ staff: "", showPast: false });
+  const [showQuickClient, setShowQuickClient] = useState(false);
 
   const todayStr = today();
 
@@ -2273,6 +2296,20 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, user, staffF
     await supabase.from('appointments').update({ state: newState }).eq('id', apptId);
     setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, state: newState } : a));
     setSelectedAppt(prev => prev?.id === apptId ? { ...prev, state: newState } : prev);
+  };
+
+  const handleQuickSaveClient = async (client) => {
+    const exists = clients.find(c => c.id === client.id);
+    if (exists) {
+      await supabase.from('clients').update(client).eq('id', client.id);
+    } else {
+      await supabase.from('clients').insert(client);
+    }
+    const { data: updated } = await supabase.from('clients').select('*');
+    if (setClients) setClients(updated || []);
+    setShowQuickClient(false);
+    // Auto-select the new client in the form
+    if (!exists) setF("clientId", client.id);
   };
 
   // Calcular precio estimado de un turno
@@ -2482,7 +2519,18 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, user, staffF
             <Input label="Fecha" type="date" value={form.date} onChange={v => setF("date", v)} required dark={dark} />
             <Input label="Hora" type="time" value={form.time} onChange={v => setF("time", v)} dark={dark} />
           </div>
-          <Input label="Cliente" value={form.clientId} onChange={v => setF("clientId", v)} required dark={dark} options={clients.map(c => ({ value: c.id, label: c.name }))} />
+          <div style={{ display: "flex", alignItems: "flex-end", gap: "8px" }}>
+            <div style={{ flex: 1 }}>
+              <Input label="Cliente" value={form.clientId} onChange={v => setF("clientId", v)} required dark={dark} options={clients.map(c => ({ value: c.id, label: c.name }))} />
+            </div>
+            <button onClick={() => setShowQuickClient(true)} title="Crear nuevo cliente" style={{
+              height: "38px", minWidth: "38px", border: `1px solid ${borderC}`, borderRadius: "8px",
+              background: COLORS.primary, color: "#fff", cursor: "pointer", display: "flex",
+              alignItems: "center", justifyContent: "center", flexShrink: 0, marginBottom: "0px",
+            }}>
+              <Icons.Plus />
+            </button>
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
             <Input label="Tipo de Masaje" value={form.massageTypeId} onChange={v => setF("massageTypeId", v)} required dark={dark} options={MASSAGE_TYPES.map(t => ({ value: t.id, label: t.name }))} />
             <Input label="Profesional" value={form.staffId} onChange={v => setF("staffId", v)} required dark={dark} options={STAFF.map(s => ({ value: s.id, label: s.name }))} />
@@ -2571,11 +2619,14 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, user, staffF
           </Modal>
         );
       })()}
+      {/* Modal crear cliente rápido desde turno */}
+      <Modal open={showQuickClient} onClose={() => setShowQuickClient(false)} title="Nuevo Cliente" dark={dark}>
+        <ClientForm client={null} onSave={handleQuickSaveClient} onCancel={() => setShowQuickClient(false)} dark={dark} />
+      </Modal>
+
     </div>
   );
 };
-
-// ─── SETTINGS PAGE ──────────────────────────────────────────────────────────
 
 const SettingsPage = ({ user, dark, data }) => {
   return (
@@ -2611,7 +2662,12 @@ const SettingsPage = ({ user, dark, data }) => {
 // ─── MAIN APP ───────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(null);
+  useEffect(() => { document.title = "Tuina Admin"; }, []);
+  const [currentUser, setCurrentUser] = useState(() => {
+    try { const u = localStorage.getItem("tuina_user"); return u ? JSON.parse(u) : null; } catch { return null; }
+  });
+  const handleLogin = (user) => { setCurrentUser(user); try { localStorage.setItem("tuina_user", JSON.stringify(user)); } catch {} };
+  const handleLogout = () => { setCurrentUser(null); try { localStorage.removeItem("tuina_user"); } catch {} };
   const [activePage, setActivePage] = useState("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -2663,7 +2719,7 @@ export default function App() {
     </div>
   );
 
-  if (!currentUser) return (<><style>{globalCSS}</style><LoginScreen onLogin={setCurrentUser} users={data.users} /></>);
+  if (!currentUser) return (<><style>{globalCSS}</style><LoginScreen onLogin={handleLogin} users={data.users} /></>);
 
   const bg = dark ? COLORS.bgDark : COLORS.bg;
   const ml = sidebarCollapsed ? "64px" : "240px";
@@ -2690,7 +2746,7 @@ export default function App() {
       case "payments": return <PaymentsPage services={data.services} payments={data.payments} setPayments={updateField("payments")} clients={data.clients} user={currentUser} staffFilter={role === "masajista" ? staffId : null} dark={dark} />;
       case "clients": return <ClientsPage clients={data.clients} setClients={updateField("clients")} services={data.services} payments={data.payments} user={currentUser} dark={dark} />;
       case "reports": return <ReportsPage services={data.services} payments={data.payments} setPayments={updateField("payments")} clients={data.clients} user={currentUser} dark={dark} />;
-      case "appointments": return <AppointmentsPage appointments={data.appointments || []} setAppointments={updateField("appointments")} clients={data.clients} user={currentUser} staffFilter={role === "masajista" ? staffId : null} dark={dark} />;
+      case "appointments": return <AppointmentsPage appointments={data.appointments || []} setAppointments={updateField("appointments")} clients={data.clients} setClients={updateField("clients")} user={currentUser} staffFilter={role === "masajista" ? staffId : null} dark={dark} />;
       case "settings": return <SettingsPage user={currentUser} dark={dark} data={data} />;
       default: return null;
     }
@@ -2712,7 +2768,7 @@ export default function App() {
           <span style={{ fontFamily: "var(--font-display)", fontSize: "18px", fontWeight: 600 }}>Tuina</span>
         </div>
         {mobileMenuOpen && <div className="zen-overlay" onClick={() => setMobileMenuOpen(false)} />}
-        <Sidebar isOpen={mobileMenuOpen} active={activePage} onNavigate={handleMobileNav} user={currentUser} onLogout={() => { setCurrentUser(null); setMobileMenuOpen(false); }} dark={dark} onToggleDark={() => setDark(!dark)} collapsed={sidebarCollapsed} onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)} />
+        <Sidebar isOpen={mobileMenuOpen} active={activePage} onNavigate={handleMobileNav} user={currentUser} onLogout={() => { handleLogout(); setMobileMenuOpen(false); }} dark={dark} onToggleDark={() => setDark(!dark)} collapsed={sidebarCollapsed} onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)} />
         <main className="zen-main" style={{ marginLeft: ml, padding: "28px 32px", transition: "margin-left 0.3s ease", minHeight: "100vh" }}>{renderPage()}</main>
       </div>
     </>
