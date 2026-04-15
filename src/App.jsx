@@ -309,8 +309,8 @@ const Modal = ({ open, onClose, title, children, wide, dark }) => {
     }} onClick={onClose}>
       <div className="animate-scale" onClick={e => e.stopPropagation()} style={{
         background: dark ? COLORS.surfaceDark : COLORS.surface, borderRadius: "16px",
-        width: wide ? "min(900px, 92vw)" : "min(560px, 92vw)",
-        maxHeight: "88vh",
+        width: wide ? "min(1000px, 96vw)" : "min(560px, 92vw)",
+        maxHeight: "92vh",
         border: `1px solid ${dark ? COLORS.borderDark : COLORS.border}`,
         boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
         display: "flex", flexDirection: "column",
@@ -1866,7 +1866,7 @@ const LiquidacionesTab = ({ validPay, allPayments, setPayments, appointments, re
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                     {staffDetail.map((svc, i) => (
                       <div key={svc.id} style={{
-                        border: `1px solid ${borderC}`, borderRadius: "10px", overflow: "hidden",
+                        border: `1px solid ${borderC}`, borderRadius: "10px",
                         background: dark ? "rgba(255,255,255,0.02)" : "#fff",
                       }}>
                         {/* Cabecera del servicio */}
@@ -1876,16 +1876,13 @@ const LiquidacionesTab = ({ validPay, allPayments, setPayments, appointments, re
                               <div style={{ fontWeight: 600, fontSize: "13px", color: mainText }}>{svc.clientName}</div>
                               <div style={{ fontSize: "11px", color: mutedText }}>{formatDate(svc.date)} · {svc.typeName}</div>
                             </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                              {svc.pendiente > 0 ? (
-                                <Badge color={COLORS.danger}>Debe {formatCurrency(svc.pendiente)}</Badge>
-                              ) : (
-                                <Badge color={COLORS.success}>Cobrado</Badge>
-                              )}
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                              {svc.pendiente > 0
+                                ? <Badge color={COLORS.danger}>Debe {formatCurrency(svc.pendiente)}</Badge>
+                                : <Badge color={COLORS.success}>Cobrado</Badge>}
                               <button
                                 onClick={() => { setSelectedAppt(svc); setShowPayForm(true); }}
-                                title="Registrar cobro"
-                                style={{ background: COLORS.success + "18", border: `1px solid ${COLORS.success}40`, borderRadius: "6px", padding: "4px 10px", cursor: "pointer", fontSize: "11px", fontWeight: 600, color: COLORS.success, fontFamily: "var(--font-body)" }}
+                                style={{ background: COLORS.success + "18", border: `1px solid ${COLORS.success}40`, borderRadius: "6px", padding: "5px 12px", cursor: "pointer", fontSize: "12px", fontWeight: 600, color: COLORS.success, fontFamily: "var(--font-body)", whiteSpace: "nowrap" }}
                               >+ Cobro</button>
                             </div>
                           </div>
