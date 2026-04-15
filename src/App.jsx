@@ -1088,7 +1088,7 @@ const PaymentsPage = ({ appointments, services, payments, setPayments, clients, 
           registered_by: payment.registeredBy,
         };
         const { error } = await supabase.from('payments').update(row).eq('id', payment.id);
-        if (error) { console.error("Error al actualizar pago:", error); alert("Error al actualizar: " + error.message); return; }
+        if (error) { alert("Error al actualizar: " + error.message); return; }
       } else {
         const row = {
           appointment_id: payment.appointmentId || null,
@@ -1099,14 +1099,12 @@ const PaymentsPage = ({ appointments, services, payments, setPayments, clients, 
           registered_by: payment.registeredBy, created_by: user.username, created_at: new Date().toISOString(),
         };
         const { error } = await supabase.from('payments').insert(row);
-        if (error) { console.error("Error al insertar pago:", error); alert("Error al registrar cobro: " + error.message); return; }
+        if (error) { alert("Error al registrar cobro: " + error.message); return; }
       }
-      const { data: updated, error: fetchError } = await supabase.from('payments').select('*');
-      if (fetchError) { console.error("Error al recargar pagos:", fetchError); return; }
+      const { data: updated } = await supabase.from('payments').select('*');
       setPayments((updated || []).map(mapPayment));
       setShowForm(false); setShowNewForm(false); setSelectedAppt(null);
     } catch (e) {
-      console.error("Error inesperado en cobro:", e);
       alert("Error inesperado: " + e.message);
     }
   };
@@ -1680,25 +1678,38 @@ const LiquidacionesTab = ({ validPay, allPayments, setPayments, appointments, re
   }, [realized, validPay, clients]);
 
   const handleSavePago = async (payment) => {
-    const row = {
-      id: payment.id,
-      appointment_id: payment.appointmentId || null,
-      service_id: null,
-      date: payment.date, time: payment.time,
-      amount: payment.amount, pending: payment.pending, state: payment.state, method: payment.method,
-      destino: payment.destino, reference: payment.reference, observations: payment.observations,
-      registered_by: payment.registeredBy, created_by: user?.username || "admin", created_at: new Date().toISOString(),
-    };
-    const exists = allPayments.find(p => p.id === payment.id);
-    if (exists) {
-      await supabase.from('payments').update(row).eq('id', payment.id);
-    } else {
-      await supabase.from('payments').insert(row);
+    try {
+      const exists = allPayments.find(p => p.id === payment.id);
+      if (exists) {
+        const row = {
+          appointment_id: payment.appointmentId || null,
+          service_id: null,
+          date: payment.date, time: payment.time,
+          amount: payment.amount, pending: payment.pending, state: payment.state, method: payment.method,
+          destino: payment.destino, reference: payment.reference, observations: payment.observations,
+          registered_by: payment.registeredBy,
+        };
+        const { error } = await supabase.from('payments').update(row).eq('id', payment.id);
+        if (error) { alert("Error al actualizar: " + error.message); return; }
+      } else {
+        const row = {
+          appointment_id: payment.appointmentId || null,
+          service_id: null,
+          date: payment.date, time: payment.time,
+          amount: payment.amount, pending: payment.pending, state: payment.state, method: payment.method,
+          destino: payment.destino, reference: payment.reference, observations: payment.observations,
+          registered_by: payment.registeredBy, created_by: user?.username || "admin", created_at: new Date().toISOString(),
+        };
+        const { error } = await supabase.from('payments').insert(row);
+        if (error) { alert("Error al registrar cobro: " + error.message); return; }
+      }
+      const { data: updated } = await supabase.from('payments').select('*');
+      setPayments((updated || []).map(mapPayment));
+      setShowPayForm(false);
+      setSelectedAppt(null);
+    } catch (e) {
+      alert("Error inesperado: " + e.message);
     }
-    const { data: updated } = await supabase.from('payments').select('*');
-    setPayments((updated || []).map(mapPayment));
-    setShowPayForm(false);
-    setSelectedAppt(null);
   };
 
   const rowStyle = (i, clickable) => ({
@@ -1859,34 +1870,29 @@ const LiquidacionesTab = ({ validPay, allPayments, setPayments, appointments, re
                         background: dark ? "rgba(255,255,255,0.02)" : "#fff",
                       }}>
                         {/* Cabecera del servicio */}
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto auto", gap: "10px", padding: "10px 14px", alignItems: "center", borderBottom: svc.pagos.length > 0 ? `1px solid ${borderC}` : "none" }}>
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: "13px", color: mainText }}>{svc.clientName}</div>
-                            <div style={{ fontSize: "11px", color: mutedText }}>{formatDate(svc.date)} · {svc.typeName}</div>
+                        <div style={{ padding: "10px 14px", borderBottom: svc.pagos.length > 0 ? `1px solid ${borderC}` : "none" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "8px", marginBottom: "8px" }}>
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: "13px", color: mainText }}>{svc.clientName}</div>
+                              <div style={{ fontSize: "11px", color: mutedText }}>{formatDate(svc.date)} · {svc.typeName}</div>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                              {svc.pendiente > 0 ? (
+                                <Badge color={COLORS.danger}>Debe {formatCurrency(svc.pendiente)}</Badge>
+                              ) : (
+                                <Badge color={COLORS.success}>Cobrado</Badge>
+                              )}
+                              <button
+                                onClick={() => { setSelectedAppt(svc); setShowPayForm(true); }}
+                                title="Registrar cobro"
+                                style={{ background: COLORS.success + "18", border: `1px solid ${COLORS.success}40`, borderRadius: "6px", padding: "4px 10px", cursor: "pointer", fontSize: "11px", fontWeight: 600, color: COLORS.success, fontFamily: "var(--font-body)" }}
+                              >+ Cobro</button>
+                            </div>
                           </div>
-                          <div style={{ textAlign: "right" }}>
-                            <div style={{ fontSize: "11px", color: mutedText }}>Total</div>
-                            <div style={{ fontWeight: 700, fontSize: "13px", color: mainText }}>{formatCurrency(svc.finalPrice)}</div>
-                          </div>
-                          <div style={{ textAlign: "right" }}>
-                            <div style={{ fontSize: "11px", color: mutedText }}>Cobró ella</div>
-                            <div style={{ fontWeight: 700, fontSize: "13px", color: COLORS.success }}>{formatCurrency(svc.cobradoMasajista)}</div>
-                          </div>
-                          <div style={{ textAlign: "right" }}>
-                            <div style={{ fontSize: "11px", color: mutedText }}>Cobró centro</div>
-                            <div style={{ fontWeight: 700, fontSize: "13px", color: COLORS.primary }}>{formatCurrency(svc.cobradoCentro)}</div>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            {svc.pendiente > 0 ? (
-                              <Badge color={COLORS.danger}>Debe ${svc.pendiente.toLocaleString("es-AR")}</Badge>
-                            ) : (
-                              <Badge color={COLORS.success}>Cobrado</Badge>
-                            )}
-                            <button
-                              onClick={() => { setSelectedAppt(svc); setShowPayForm(true); }}
-                              title="Registrar cobro"
-                              style={{ background: COLORS.success + "18", border: `1px solid ${COLORS.success}40`, borderRadius: "6px", padding: "4px 10px", cursor: "pointer", fontSize: "11px", fontWeight: 600, color: COLORS.success, fontFamily: "var(--font-body)" }}
-                            >+ Cobro</button>
+                          <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                            <div><span style={{ fontSize: "11px", color: mutedText }}>Total: </span><span style={{ fontWeight: 700, fontSize: "13px", color: mainText }}>{formatCurrency(svc.finalPrice)}</span></div>
+                            <div><span style={{ fontSize: "11px", color: mutedText }}>Cobró ella: </span><span style={{ fontWeight: 700, fontSize: "13px", color: COLORS.success }}>{formatCurrency(svc.cobradoMasajista)}</span></div>
+                            <div><span style={{ fontSize: "11px", color: mutedText }}>Cobró centro: </span><span style={{ fontWeight: 700, fontSize: "13px", color: COLORS.primary }}>{formatCurrency(svc.cobradoCentro)}</span></div>
                           </div>
                         </div>
 
