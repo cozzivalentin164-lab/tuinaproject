@@ -283,6 +283,80 @@ const Input = ({ label, value, onChange, type = "text", placeholder, options, re
   );
 };
 
+// ─── CLIENT SEARCH INPUT ─────────────────────────────────────────────────────
+// Buscador de clientes con campo de texto + dropdown filtrado
+const ClientSearchInput = ({ value, onChange, clients, required, dark, label = "Cliente" }) => {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  // Sincronizar el texto con el cliente seleccionado
+  const selectedClient = clients.find(c => c.id === value);
+  useEffect(() => {
+    if (selectedClient) setQuery(selectedClient.name);
+    else if (!value) setQuery("");
+  }, [value, selectedClient?.name]);
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return clients.slice(0, 30);
+    return clients.filter(c => c.name?.toLowerCase().includes(query.toLowerCase()) || c.phone?.includes(query)).slice(0, 30);
+  }, [clients, query]);
+
+  // Cerrar al hacer click fuera
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const borderC = dark ? COLORS.borderDark : COLORS.border;
+  const bgColor = dark ? COLORS.surfaceDark : "#faf9f7";
+  const textColor = dark ? COLORS.textDark : COLORS.text;
+  const mutedColor = dark ? COLORS.textMutedDark : COLORS.textMuted;
+
+  return (
+    <div ref={ref} style={{ display: "flex", flexDirection: "column", gap: "4px", position: "relative" }}>
+      <label style={{ fontSize: "12px", fontWeight: 500, color: mutedColor }}>{label}{required && " *"}</label>
+      <input
+        value={query}
+        onChange={e => { setQuery(e.target.value); setOpen(true); if (!e.target.value) onChange(""); }}
+        onFocus={() => setOpen(true)}
+        placeholder="Escribir nombre..."
+        style={{
+          width: "100%", padding: "9px 12px", fontSize: "13px",
+          border: `1px solid ${borderC}`, borderRadius: "8px", outline: "none",
+          background: bgColor, color: textColor, fontFamily: "var(--font-body)",
+        }}
+      />
+      {open && filtered.length > 0 && (
+        <div style={{
+          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 9999,
+          background: dark ? COLORS.cardDark : "#fff",
+          border: `1px solid ${borderC}`, borderRadius: "8px",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.15)", maxHeight: "220px", overflowY: "auto",
+          marginTop: "2px",
+        }}>
+          {filtered.map(c => (
+            <div key={c.id}
+              onMouseDown={e => { e.preventDefault(); onChange(c.id); setQuery(c.name); setOpen(false); }}
+              style={{
+                padding: "9px 14px", cursor: "pointer", fontSize: "13px", color: textColor,
+                background: c.id === value ? COLORS.primary + "18" : "transparent",
+                borderBottom: `1px solid ${borderC}20`,
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = COLORS.primary + "18"}
+              onMouseLeave={e => e.currentTarget.style.background = c.id === value ? COLORS.primary + "18" : "transparent"}
+            >
+              <span style={{ fontWeight: 600 }}>{c.name}</span>
+              {c.phone && <span style={{ fontSize: "11px", color: mutedColor, marginLeft: "8px" }}>{c.phone}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Modal = ({ open, onClose, title, children, wide, dark }) => {
   const contentRef = useRef(null);
   
@@ -730,9 +804,9 @@ const DashboardPage = ({ services, payments, clients, dark }) => {
   const incomeMonth = _.sumBy(monthPayments, "amount");
   const avgTicket = monthS.length > 0 ? Math.round(_.sumBy(monthS, "finalPrice") / monthS.length) : 0;
   const avgDuration = monthS.length > 0 ? Math.round(_.meanBy(monthS, "duration")) : 0;
-  const topType = _(realized).countBy("massageTypeId").entries().maxBy(1);
+  const topType = _(monthS).countBy("massageTypeId").entries().maxBy(1);
   const topTypeName = topType ? MASSAGE_TYPES.find(t => t.id === topType[0])?.name : "—";
-  const topMethod = _(payments).filter(p => p.state !== "anulado").countBy("method").entries().maxBy(1);
+  const topMethod = _(monthPayments).countBy("method").entries().maxBy(1);
   const topMethodName = topMethod ? PAYMENT_METHODS.find(m => m.id === topMethod[0])?.name : "—";
   const unpaidServices = services.filter(s => {
     if (s.state !== "realizado") return false;
@@ -1262,7 +1336,7 @@ const PaymentsPage = ({ appointments, services, payments, setPayments, clients, 
 
 // ─── CLIENTS PAGE ───────────────────────────────────────────────────────────
 
-const ClientsPage = ({ clients, setClients, services, payments, user, dark }) => {
+const ClientsPage = ({ clients, setClients, services, payments, appointments, user, dark }) => {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
@@ -1292,11 +1366,25 @@ const ClientsPage = ({ clients, setClients, services, payments, user, dark }) =>
   // Memoizado para no recalcular en cada celda de cada render
   const statsMap = useMemo(() => {
     const map = {};
+    // Construir un mapa de appointmentId → clientId para pagos via appointments
+    const apptClientMap = {};
+    if (appointments) {
+      for (const a of appointments) { apptClientMap[a.id] = a.clientId; }
+    }
     for (const client of clients) {
       const cSvcs = services.filter(s => s.clientId === client.id && s.state === "realizado");
       const cPays = payments.filter(p => {
-        const svc = services.find(s => s.id === p.serviceId);
-        return svc?.clientId === client.id && p.state !== "anulado";
+        if (p.state === "anulado") return false;
+        // Pago vinculado a un servicio (legacy)
+        if (p.serviceId) {
+          const svc = services.find(s => s.id === p.serviceId);
+          if (svc?.clientId === client.id) return true;
+        }
+        // Pago vinculado a un turno (nuevo flujo)
+        if (p.appointmentId) {
+          return apptClientMap[p.appointmentId] === client.id;
+        }
+        return false;
       });
       map[client.id] = {
         visits: cSvcs.length,
@@ -1305,7 +1393,7 @@ const ClientsPage = ({ clients, setClients, services, payments, user, dark }) =>
       };
     }
     return map;
-  }, [clients, services, payments]);
+  }, [clients, services, payments, appointments]);
   const getStats = (id) => statsMap[id] || { visits: 0, totalSpent: 0, lastVisit: null };
   return (
     <div className="animate-fade" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -2643,7 +2731,7 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
           </div>
           <div style={{ display: "flex", alignItems: "flex-end", gap: "8px" }}>
             <div style={{ flex: 1 }}>
-              <Input label="Cliente" value={form.clientId} onChange={v => setF("clientId", v)} required dark={dark} options={clients.map(c => ({ value: c.id, label: c.name }))} />
+              <ClientSearchInput label="Cliente" value={form.clientId} onChange={v => setF("clientId", v)} clients={clients} required dark={dark} />
             </div>
             <button onClick={() => setShowQuickClient(true)} title="Crear nuevo cliente" style={{
               height: "38px", minWidth: "38px", border: `1px solid ${borderC}`, borderRadius: "8px",
@@ -2866,7 +2954,7 @@ export default function App() {
       case "dashboard": return <DashboardPage services={data.services} payments={data.payments} clients={data.clients} dark={dark} />;
       case "services": return <ServicesPage services={data.services} setServices={updateField("services")} payments={data.payments} clients={data.clients} user={currentUser} dark={dark} />;
       case "payments": return <PaymentsPage appointments={data.appointments || []} services={data.services} payments={data.payments} setPayments={updateField("payments")} clients={data.clients} user={currentUser} staffFilter={role === "masajista" ? staffId : null} dark={dark} />;
-      case "clients": return <ClientsPage clients={data.clients} setClients={updateField("clients")} services={data.services} payments={data.payments} user={currentUser} dark={dark} />;
+      case "clients": return <ClientsPage clients={data.clients} setClients={updateField("clients")} services={data.services} payments={data.payments} appointments={data.appointments} user={currentUser} dark={dark} />;
       case "reports": return <ReportsPage appointments={data.appointments || []} services={data.services} payments={data.payments} setPayments={updateField("payments")} clients={data.clients} user={currentUser} dark={dark} />;
       case "appointments": return <AppointmentsPage appointments={data.appointments || []} setAppointments={updateField("appointments")} clients={data.clients} setClients={updateField("clients")} user={currentUser} staffFilter={role === "masajista" ? staffId : null} dark={dark} />;
       case "settings": return <SettingsPage user={currentUser} dark={dark} data={data} />;
