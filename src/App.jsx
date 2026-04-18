@@ -483,14 +483,24 @@ const Tabs = ({ tabs, active, onChange, dark }) => (
 
 // ─── LOGIN SCREEN ───────────────────────────────────────────────────────────
 
-const LoginScreen = ({ onLogin, users }) => {
-  const [username, setUsername] = useState("");
+const LoginScreen = ({ onLogin }) => {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const handleLogin = () => {
-    const user = users.find(u => u.username === username && u.password === password);
-    if (user) onLogin(user); else setError("Credenciales incorrectas");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      await onLogin({ email, password });
+    } catch (e) {
+      setError("Credenciales incorrectas");
+    } finally {
+      setLoading(false);
+    }
   };
+
   return (
     <div style={{
       minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
@@ -505,14 +515,13 @@ const LoginScreen = ({ onLogin, users }) => {
         <h1 style={{ fontFamily: "var(--font-display)", fontSize: "28px", fontWeight: 600, color: COLORS.text, marginBottom: "4px" }}>Tuina</h1>
         <p style={{ fontSize: "13px", color: COLORS.textMuted, marginBottom: "32px" }}>Panel de gestión de masajes</p>
         <div style={{ display: "flex", flexDirection: "column", gap: "14px", textAlign: "left" }}>
-          <Input label="Usuario" value={username} onChange={setUsername} placeholder="admin" />
+          <Input label="Email" value={email} onChange={setEmail} placeholder="admin@tuina.lat" type="email" />
           <Input label="Contraseña" value={password} onChange={e => { setPassword(e); setError(""); }} type="password" placeholder="••••••" />
           {error && <span style={{ fontSize: "12px", color: COLORS.danger }}>{error}</span>}
-          <Button onClick={handleLogin} style={{ width: "100%", justifyContent: "center", padding: "12px", marginTop: "8px", fontSize: "14px" }}>
-            Iniciar Sesión
+          <Button onClick={handleSubmit} disabled={loading} style={{ width: "100%", justifyContent: "center", padding: "12px", marginTop: "8px", fontSize: "14px" }}>
+            {loading ? "Ingresando..." : "Iniciar Sesión"}
           </Button>
         </div>
-        
       </div>
     </div>
   );
@@ -2873,35 +2882,71 @@ const SettingsPage = ({ user, dark, data }) => {
 
 export default function App() {
   useEffect(() => { document.title = "Tuina Admin"; }, []);
-  const [currentUser, setCurrentUser] = useState(() => {
-    try { const u = localStorage.getItem("tuina_user"); return u ? JSON.parse(u) : null; } catch { return null; }
-  });
-  const handleLogin = (user) => { setCurrentUser(user); try { localStorage.setItem("tuina_user", JSON.stringify(user)); } catch {} };
-  const handleLogout = () => { setCurrentUser(null); try { localStorage.removeItem("tuina_user"); } catch {} };
+
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [activePage, setActivePage] = useState("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dark, setDark] = useState(false);
-  const [data, setData] = useState({ clients: [], services: [], payments: [], appointments: [], users: [] });
+  const [data, setData] = useState({ clients: [], services: [], payments: [], appointments: [] });
   const [loading, setLoading] = useState(true);
+
+  // Sesión de Supabase Auth
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('*')
+          .eq('auth_id', session.user.id)
+          .single();
+        setCurrentUser(userData);
+      }
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('*')
+          .eq('auth_id', session.user.id)
+          .single();
+        setCurrentUser(userData);
+      } else {
+        setCurrentUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogin = async ({ email, password }) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+  };
 
   // Cargar todos los datos desde Supabase al iniciar
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [clients, services, payments, appointments, users] = await Promise.all([
+        const [clients, services, payments, appointments] = await Promise.all([
           supabase.from('clients').select('*'),
           supabase.from('services').select('*'),
           supabase.from('payments').select('*'),
           supabase.from('appointments').select('*'),
-          supabase.from('users').select('*'),
         ]);
         setData({
           clients: clients.data || [],
           services: (services.data || []).map(mapService),
           payments: (payments.data || []).map(mapPayment),
           appointments: (appointments.data || []).map(mapAppointment),
-          users: users.data || [],
         });
       } catch (e) {
         console.error("Error cargando datos:", e);
@@ -2919,7 +2964,7 @@ export default function App() {
     });
   }, []);
 
-  if (loading) return (
+  const LoadingScreen = () => (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: COLORS.bg, fontFamily: "var(--font-body)" }}>
       <style>{globalCSS}</style>
       <div style={{ textAlign: "center", animation: "pulse 1.5s infinite" }}>
@@ -2929,7 +2974,8 @@ export default function App() {
     </div>
   );
 
-  if (!currentUser) return (<><style>{globalCSS}</style><LoginScreen onLogin={handleLogin} users={data.users} /></>);
+  if (authLoading || loading) return <LoadingScreen />;
+  if (!currentUser) return (<><style>{globalCSS}</style><LoginScreen onLogin={handleLogin} /></>);
 
   const bg = dark ? COLORS.bgDark : COLORS.bg;
   const ml = sidebarCollapsed ? "64px" : "240px";
