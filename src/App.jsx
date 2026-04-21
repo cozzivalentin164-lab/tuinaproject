@@ -1362,7 +1362,8 @@ const ClientsPage = ({ clients, setClients, services, payments, appointments, us
       const { error } = await supabase.from('clients').update(client).eq('id', client.id);
       if (error) { alert("Error al actualizar cliente: " + error.message); return; }
     } else {
-      const { error } = await supabase.from('clients').insert(client);
+      const clientWithId = { ...client, id: client.id || crypto.randomUUID() };
+      const { error } = await supabase.from('clients').insert(clientWithId);
       if (error) { alert("Error al crear cliente: " + error.message); return; }
     }
     const { data: updated } = await supabase.from('clients').select('*');
@@ -2495,9 +2496,10 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
       if (error) { alert("Error al modificar turno: " + error.message); return; }
       setNotifAppt({ ...form, id: editing.id, _action: "modificado" });
     } else {
-      const { data: inserted, error } = await supabase.from('appointments').insert(row).select().single();
+      const newId = crypto.randomUUID();
+      const { error } = await supabase.from('appointments').insert({ ...row, id: newId });
       if (error) { alert("Error al crear turno: " + error.message); return; }
-      setNotifAppt({ ...form, id: inserted?.id, _action: "agendado" });
+      setNotifAppt({ ...form, id: newId, _action: "agendado" });
     }
     const { data: updated } = await supabase.from('appointments').select('*');
     setAppointments((updated || []).map(mapAppointment));
@@ -2528,9 +2530,10 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
       const { error } = await supabase.from('clients').update(client).eq('id', client.id);
       if (error) { alert("Error al actualizar cliente: " + error.message); return; }
     } else {
-      const { data: inserted, error } = await supabase.from('clients').insert(client).select().single();
+      const clientWithId = { ...client, id: client.id || crypto.randomUUID() };
+      const { error } = await supabase.from('clients').insert(clientWithId);
       if (error) { alert("Error al crear cliente: " + error.message); return; }
-      const realId = inserted?.id || client.id;
+      const realId = clientWithId.id;
       const { data: updated } = await supabase.from('clients').select('*');
       if (setClients) setClients(updated || []);
       setShowQuickClient(false);
