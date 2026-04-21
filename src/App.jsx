@@ -55,7 +55,7 @@ const ROOMS = ["Sala 1", "Sala 2"];
 
 // ─── UTILITY FUNCTIONS ──────────────────────────────────────────────────────
 
-const generateId = () => Math.random().toString(36).substr(2, 9);
+const generateId = () => crypto.randomUUID();
 
 const formatCurrency = (n) => {
   if (n == null) return "$0";
@@ -969,9 +969,11 @@ const ServicesPage = ({ services, setServices, payments, clients, user, dark }) 
     };
     const exists = services.find(s => s.id === svc.id);
     if (exists) {
-      await supabase.from('services').update(row).eq('id', svc.id);
+      const { error } = await supabase.from('services').update(row).eq('id', svc.id);
+      if (error) { alert("Error al actualizar servicio: " + error.message); return; }
     } else {
-      await supabase.from('services').insert({ ...row, created_by: user.username, created_at: new Date().toISOString() });
+      const { error } = await supabase.from('services').insert({ ...row, created_by: user.username, created_at: new Date().toISOString() });
+      if (error) { alert("Error al registrar masaje: " + error.message); return; }
     }
     const { data: updated } = await supabase.from('services').select('*');
     setServices((updated || []).map(mapService));
@@ -1357,9 +1359,11 @@ const ClientsPage = ({ clients, setClients, services, payments, appointments, us
   const handleSave = async (client) => {
     const exists = clients.find(c => c.id === client.id);
     if (exists) {
-      await supabase.from('clients').update(client).eq('id', client.id);
+      const { error } = await supabase.from('clients').update(client).eq('id', client.id);
+      if (error) { alert("Error al actualizar cliente: " + error.message); return; }
     } else {
-      await supabase.from('clients').insert(client);
+      const { error } = await supabase.from('clients').insert(client);
+      if (error) { alert("Error al crear cliente: " + error.message); return; }
     }
     const { data: updated } = await supabase.from('clients').select('*');
     setClients(updated || []);
@@ -2487,12 +2491,13 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
     };
 
     if (editing) {
-      await supabase.from('appointments').update(row).eq('id', editing.id);
+      const { error } = await supabase.from('appointments').update(row).eq('id', editing.id);
+      if (error) { alert("Error al modificar turno: " + error.message); return; }
       setNotifAppt({ ...form, id: editing.id, _action: "modificado" });
     } else {
-      const newId = generateId();
-      await supabase.from('appointments').insert({ ...row, id: newId });
-      setNotifAppt({ ...form, id: newId, _action: "agendado" });
+      const { data: inserted, error } = await supabase.from('appointments').insert(row).select().single();
+      if (error) { alert("Error al crear turno: " + error.message); return; }
+      setNotifAppt({ ...form, id: inserted?.id, _action: "agendado" });
     }
     const { data: updated } = await supabase.from('appointments').select('*');
     setAppointments((updated || []).map(mapAppointment));
@@ -2520,14 +2525,21 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
   const handleQuickSaveClient = async (client) => {
     const exists = clients.find(c => c.id === client.id);
     if (exists) {
-      await supabase.from('clients').update(client).eq('id', client.id);
+      const { error } = await supabase.from('clients').update(client).eq('id', client.id);
+      if (error) { alert("Error al actualizar cliente: " + error.message); return; }
     } else {
-      await supabase.from('clients').insert(client);
+      const { data: inserted, error } = await supabase.from('clients').insert(client).select().single();
+      if (error) { alert("Error al crear cliente: " + error.message); return; }
+      const realId = inserted?.id || client.id;
+      const { data: updated } = await supabase.from('clients').select('*');
+      if (setClients) setClients(updated || []);
+      setShowQuickClient(false);
+      setF("clientId", realId);
+      return;
     }
     const { data: updated } = await supabase.from('clients').select('*');
     if (setClients) setClients(updated || []);
     setShowQuickClient(false);
-    // Auto-select the new client in the form
     if (!exists) setF("clientId", client.id);
   };
 
