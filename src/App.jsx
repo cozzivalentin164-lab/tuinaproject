@@ -2907,6 +2907,28 @@ export default function App() {
   const [data, setData] = useState({ clients: [], services: [], payments: [], appointments: [] });
   const [loading, setLoading] = useState(true);
 
+  // Cargar datos solo cuando hay usuario autenticado
+  const loadData = useCallback(async () => {
+    try {
+      const [clients, services, payments, appointments] = await Promise.all([
+        supabase.from('clients').select('*'),
+        supabase.from('services').select('*'),
+        supabase.from('payments').select('*'),
+        supabase.from('appointments').select('*'),
+      ]);
+      setData({
+        clients: clients.data || [],
+        services: (services.data || []).map(mapService),
+        payments: (payments.data || []).map(mapPayment),
+        appointments: (appointments.data || []).map(mapAppointment),
+      });
+    } catch (e) {
+      console.error("Error cargando datos:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   // Sesión de Supabase Auth
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -2917,6 +2939,9 @@ export default function App() {
           .eq('auth_id', session.user.id)
           .single();
         setCurrentUser(userData);
+        loadData();
+      } else {
+        setLoading(false);
       }
       setAuthLoading(false);
     });
@@ -2929,13 +2954,15 @@ export default function App() {
           .eq('auth_id', session.user.id)
           .single();
         setCurrentUser(userData);
+        if (event === 'SIGNED_IN') loadData();
       } else {
         setCurrentUser(null);
+        setData({ clients: [], services: [], payments: [], appointments: [] });
       }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [loadData]);
 
   const handleLogin = async ({ email, password }) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -2945,32 +2972,8 @@ export default function App() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setCurrentUser(null);
+    setData({ clients: [], services: [], payments: [], appointments: [] });
   };
-
-  // Cargar todos los datos desde Supabase al iniciar
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [clients, services, payments, appointments] = await Promise.all([
-          supabase.from('clients').select('*'),
-          supabase.from('services').select('*'),
-          supabase.from('payments').select('*'),
-          supabase.from('appointments').select('*'),
-        ]);
-        setData({
-          clients: clients.data || [],
-          services: (services.data || []).map(mapService),
-          payments: (payments.data || []).map(mapPayment),
-          appointments: (appointments.data || []).map(mapAppointment),
-        });
-      } catch (e) {
-        console.error("Error cargando datos:", e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, []);
 
   const updateField = useCallback((field) => async (updater) => {
     setData(prev => {
