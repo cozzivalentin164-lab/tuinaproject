@@ -800,20 +800,37 @@ const ClientForm = ({ client, onSave, onCancel, dark }) => {
 
 // ─── DASHBOARD PAGE ─────────────────────────────────────────────────────────
 
-const DashboardPage = ({ services, payments, clients, dark }) => {
+const DashboardPage = ({ services, payments, clients, appointments, dark }) => {
   const realized = services.filter(s => s.state === "realizado");
-  const todayS = realized.filter(s => isToday(s.date));
-  const weekS = realized.filter(s => isThisWeek(s.date));
-  const monthS = realized.filter(s => isThisMonth(s.date));
+  // Turnos realizados o reservados (agenda nueva)
+  const apptsDone = (appointments || []).filter(a => a.state === "realizado" || a.state === "reservado");
+  // Combinar servicios realizados + turnos para los KPIs de conteo
+  const todayS = [
+    ...realized.filter(s => isToday(s.date)),
+    ...apptsDone.filter(a => isToday(a.date)),
+  ];
+  const weekS = [
+    ...realized.filter(s => isThisWeek(s.date)),
+    ...apptsDone.filter(a => isThisWeek(a.date)),
+  ];
+  const monthS = [
+    ...realized.filter(s => isThisMonth(s.date)),
+    ...apptsDone.filter(a => isThisMonth(a.date)),
+  ];
   const todayPayments = payments.filter(p => isToday(p.date) && p.state !== "anulado");
   const weekPayments = payments.filter(p => isThisWeek(p.date) && p.state !== "anulado");
   const monthPayments = payments.filter(p => isThisMonth(p.date) && p.state !== "anulado");
   const incomeToday = _.sumBy(todayPayments, "amount");
   const incomeWeek = _.sumBy(weekPayments, "amount");
   const incomeMonth = _.sumBy(monthPayments, "amount");
-  const avgTicket = monthS.length > 0 ? Math.round(_.sumBy(monthS, "finalPrice") / monthS.length) : 0;
-  const avgDuration = monthS.length > 0 ? Math.round(_.meanBy(monthS, "duration")) : 0;
-  const topType = _(monthS).countBy("massageTypeId").entries().maxBy(1);
+  const avgTicket = monthPayments.length > 0 ? Math.round(_.sumBy(monthPayments, "amount") / monthPayments.length) : 0;
+  const avgDuration = realized.length > 0 ? Math.round(_.meanBy(realized, "duration")) : 0;
+  // Tipo más vendido: combinar servicios y turnos
+  const allMassageTypeIds = [
+    ...realized.filter(s => isThisMonth(s.date)).map(s => s.massageTypeId),
+    ...apptsDone.filter(a => isThisMonth(a.date)).map(a => a.massageTypeId),
+  ];
+  const topType = _(allMassageTypeIds).countBy().entries().maxBy(1);
   const topTypeName = topType ? MASSAGE_TYPES.find(t => t.id === topType[0])?.name : "—";
   const topMethod = _(monthPayments).countBy("method").entries().maxBy(1);
   const topMethodName = topMethod ? PAYMENT_METHODS.find(m => m.id === topMethod[0])?.name : "—";
@@ -1372,7 +1389,8 @@ const ClientsPage = ({ clients, setClients, services, payments, appointments, us
   };
   const handleDelete = async () => {
     if (!confirmDelete) return;
-    await supabase.from('clients').delete().eq('id', confirmDelete.id);
+    const { error } = await supabase.from('clients').delete().eq('id', confirmDelete.id);
+    if (error) { alert("Error al eliminar: " + error.message); return; }
     const { data: updated } = await supabase.from('clients').select('*');
     setClients(updated || []);
     setConfirmDelete(null); setDetail(null);
@@ -1437,13 +1455,6 @@ const ClientsPage = ({ clients, setClients, services, payments, appointments, us
       <Modal open={showForm} onClose={() => { setShowForm(false); setEditing(null); }} title={editing ? "Editar Cliente" : "Nuevo Cliente"} dark={dark}>
         <ClientForm client={editing} onSave={handleSave} onCancel={() => { setShowForm(false); setEditing(null); }} dark={dark} />
       </Modal>
-      <ConfirmDialog
-        open={!!confirmDelete}
-        onConfirm={handleDelete}
-        onCancel={() => setConfirmDelete(null)}
-        message={confirmDelete ? `¿Eliminar a ${confirmDelete.name}? Esta acción no se puede deshacer.` : ""}
-        dark={dark}
-      />
       <Modal open={!!detail} onClose={() => setDetail(null)} title="Detalle del Cliente" wide dark={dark}>
         {detail && (() => {
           const stats = getStats(detail.id);
@@ -1472,6 +1483,13 @@ const ClientsPage = ({ clients, setClients, services, payments, appointments, us
           );
         })()}
       </Modal>
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(null)}
+        message={confirmDelete ? `¿Eliminar a ${confirmDelete.name}? Esta acción no se puede deshacer.` : ""}
+        dark={dark}
+      />
     </div>
   );
 };
@@ -2423,9 +2441,19 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
 
   const todayStr = today();
 
-  const emptyForm = { date: today(), time: "10:00", clientId: "", massageTypeId: "", staffId: staffFilter || "", duration: 60, state: "reservado", room: "", observations: "" };
+  const emptyForm = { date: today(), time: "10:00", clientId: "", massageTypeId: "", staffId: staffFilter || "", duration: 60, state: "reservado", room: "", observations: "", basePrice: 0, discount: 0, surcharge: 0, finalPrice: 0 };
   const [form, setForm] = useState(emptyForm);
-  const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const setF = (k, v) => setForm(f => {
+    const next = { ...f, [k]: v };
+    if (k === "massageTypeId") {
+      const mt = MASSAGE_TYPES.find(x => x.id === v);
+      if (mt) { next.basePrice = mt.basePrice; next.finalPrice = mt.basePrice - (next.discount || 0) + (next.surcharge || 0); }
+    }
+    if (["basePrice", "discount", "surcharge"].includes(k)) {
+      next.finalPrice = (Number(next.basePrice) || 0) - (Number(next.discount) || 0) + (Number(next.surcharge) || 0);
+    }
+    return next;
+  });
 
   // Semana actual (lunes a domingo)
   const weekStart = useMemo(() => {
@@ -2801,6 +2829,16 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
               )}
             </div>
           )}
+          {/* Precio */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "12px" }}>
+            <Input label="Precio Base" type="number" value={form.basePrice} onChange={v => setF("basePrice", Number(v))} dark={dark} min="0" />
+            <Input label="Descuento" type="number" value={form.discount} onChange={v => setF("discount", Number(v))} dark={dark} min="0" />
+            <Input label="Recargo" type="number" value={form.surcharge} onChange={v => setF("surcharge", Number(v))} dark={dark} min="0" />
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <label style={{ fontSize: "12px", fontWeight: 500, color: dark ? COLORS.textMutedDark : COLORS.textMuted }}>Precio Final</label>
+              <div style={{ fontSize: "20px", fontWeight: 700, fontFamily: "var(--font-display)", color: COLORS.primary, paddingTop: "6px" }}>{formatCurrency(form.finalPrice)}</div>
+            </div>
+          </div>
           <Input label="Observaciones" value={form.observations} onChange={v => setF("observations", v)} dark={dark} rows={2} placeholder="Notas..." />
           <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
             <Button variant="secondary" onClick={() => { setShowForm(false); setEditing(null); }}>Cancelar</Button>
@@ -2899,13 +2937,12 @@ export default function App() {
   useEffect(() => { document.title = "Tuina Admin"; }, []);
 
   const [currentUser, setCurrentUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [appReady, setAppReady] = useState(false);
   const [activePage, setActivePage] = useState("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [data, setData] = useState({ clients: [], services: [], payments: [], appointments: [] });
-  const [loading, setLoading] = useState(true);
 
   // Cargar datos solo cuando hay usuario autenticado
   const loadData = useCallback(async () => {
@@ -2925,7 +2962,7 @@ export default function App() {
     } catch (e) {
       console.error("Error cargando datos:", e);
     } finally {
-      setLoading(false);
+      setAppReady(true);
     }
   }, []);
 
@@ -2941,9 +2978,8 @@ export default function App() {
         setCurrentUser(userData);
         loadData();
       } else {
-        setLoading(false);
+        setAppReady(true);
       }
-      setAuthLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -2992,7 +3028,7 @@ export default function App() {
     </div>
   );
 
-  if (authLoading || loading) return <LoadingScreen />;
+  if (!appReady) return <LoadingScreen />;
   if (!currentUser) return (<><style>{globalCSS}</style><LoginScreen onLogin={handleLogin} /></>);
 
   const bg = dark ? COLORS.bgDark : COLORS.bg;
@@ -3015,7 +3051,7 @@ export default function App() {
       return null;
     }
     switch (activePage) {
-      case "dashboard": return <DashboardPage services={data.services} payments={data.payments} clients={data.clients} dark={dark} />;
+      case "dashboard": return <DashboardPage services={data.services} payments={data.payments} clients={data.clients} appointments={data.appointments || []} dark={dark} />;
       case "services": return <ServicesPage services={data.services} setServices={updateField("services")} payments={data.payments} clients={data.clients} user={currentUser} dark={dark} />;
       case "payments": return <PaymentsPage appointments={data.appointments || []} services={data.services} payments={data.payments} setPayments={updateField("payments")} clients={data.clients} user={currentUser} staffFilter={role === "masajista" ? staffId : null} dark={dark} />;
       case "clients": return <ClientsPage clients={data.clients} setClients={updateField("clients")} services={data.services} payments={data.payments} appointments={data.appointments} user={currentUser} dark={dark} />;
