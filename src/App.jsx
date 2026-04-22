@@ -53,6 +53,14 @@ const STAFF = [
 
 const ROOMS = ["Sala 1", "Sala 2"];
 
+const BLOCK_REASONS = [
+  { id: "descanso", name: "Descanso / No disponible", icon: "😴" },
+  { id: "dia_libre", name: "Día libre", icon: "🌴" },
+  { id: "licencia", name: "Licencia / Enfermedad", icon: "🏥" },
+  { id: "capacitacion", name: "Capacitación", icon: "📚" },
+  { id: "otro", name: "Otro", icon: "🔒" },
+];
+
 // ─── UTILITY FUNCTIONS ──────────────────────────────────────────────────────
 
 const generateId = () => crypto.randomUUID();
@@ -2176,7 +2184,7 @@ function calcColumns(appts) {
   
 
 
-const WeekView = ({ weekDays, appointments, clients, dark, onClickAppt, todayStr }) => {
+const WeekView = ({ weekDays, appointments, blocks = [], clients, dark, onClickAppt, onClickBlock, todayStr }) => {
   const borderC = dark ? COLORS.borderDark : COLORS.border;
   const cardBg = dark ? COLORS.cardDark : COLORS.card;
   const mutedText = dark ? COLORS.textMutedDark : COLORS.textMuted;
@@ -2184,13 +2192,16 @@ const WeekView = ({ weekDays, appointments, clients, dark, onClickAppt, todayStr
 
   const toDateStr = (d) => localDateStr(d);
   const getAppts = (ds) => appointments.filter(a => a.date === ds).sort((a, b) => a.time.localeCompare(b.time));
+  const getBlocks = (ds) => blocks.filter(b => b.date === ds);
 
   // Calcular hasta qué hora mostrar (mínimo 19, máximo 23)
   const lastHour = (() => {
-    const all = weekDays.flatMap(d => getAppts(toDateStr(d)));
-    if (all.length === 0) return 19;
-    const maxEnd = Math.max(...all.map(a => timeToMin(a.time) + (a.duration || 60)));
-    return Math.min(Math.max(Math.ceil(maxEnd / 60) + 1, 19), 23);
+    const allAppts = weekDays.flatMap(d => getAppts(toDateStr(d)));
+    const allBlocks = weekDays.flatMap(d => getBlocks(toDateStr(d)));
+    if (allAppts.length === 0 && allBlocks.length === 0) return 19;
+    const maxAppt = allAppts.length > 0 ? Math.max(...allAppts.map(a => timeToMin(a.time) + (a.duration || 60))) : 0;
+    const maxBlock = allBlocks.length > 0 ? Math.max(...allBlocks.map(b => timeToMin(b.timeTo))) : 0;
+    return Math.min(Math.max(Math.ceil(Math.max(maxAppt, maxBlock) / 60) + 1, 19), 23);
   })();
 
   const hours = Array.from({ length: lastHour - CAL_START }, (_, i) => i + CAL_START);
@@ -2256,6 +2267,33 @@ const WeekView = ({ weekDays, appointments, clients, dark, onClickAppt, todayStr
                   borderBottom: `1px solid ${borderC}40`,
                 }} />
               ))}
+
+              {/* Bloqueos */}
+              {getBlocks(ds).map(b => {
+                const blockStartMin = timeToMin(b.timeFrom);
+                const blockEndMin = timeToMin(b.timeTo);
+                const durMin = blockEndMin - blockStartMin;
+                const top = (blockStartMin - CAL_START * 60) * HOUR_H / 60;
+                const height = Math.max(durMin * HOUR_H / 60, 18);
+                const staffName = STAFF.find(s => s.id === b.staffId)?.name || "";
+                const reason = BLOCK_REASONS.find(r => r.id === b.reason);
+                return (
+                  <div key={b.id} onClick={() => onClickBlock && onClickBlock(b)} style={{
+                    position: "absolute", top: `${top}px`, height: `${height}px`,
+                    left: "2px", right: "2px",
+                    background: "repeating-linear-gradient(45deg, #64748b22, #64748b22 4px, #94a3b833 4px, #94a3b833 8px)",
+                    border: "1.5px solid #64748b55",
+                    borderRadius: "4px", padding: "2px 5px",
+                    cursor: "pointer", overflow: "hidden", zIndex: 5,
+                    display: "flex", flexDirection: "column", justifyContent: "flex-start",
+                  }}>
+                    <div style={{ fontSize: "9px", fontWeight: 700, color: "#475569", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      🔒 {b.timeFrom}–{b.timeTo}
+                    </div>
+                    {height > 28 && <div style={{ fontSize: "9px", color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{staffName} · {reason?.name || b.reason}</div>}
+                  </div>
+                );
+              })}
 
               {/* Turnos */}
               {positioned.map(({ appt: a, col, totalCols }) => {
@@ -2353,7 +2391,7 @@ const WeekView = ({ weekDays, appointments, clients, dark, onClickAppt, todayStr
   );
 };
 
-const MonthView = ({ year, month, appointments, clients, dark, onClickAppt, todayStr }) => {
+const MonthView = ({ year, month, appointments, blocks = [], clients, dark, onClickAppt, onClickBlock, todayStr }) => {
   const borderC = dark ? COLORS.borderDark : COLORS.border;
   const cardBg = dark ? COLORS.cardDark : COLORS.card;
   const mutedText = dark ? COLORS.textMutedDark : COLORS.textMuted;
@@ -2369,6 +2407,7 @@ const MonthView = ({ year, month, appointments, clients, dark, onClickAppt, toda
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
   const getAppts = (ds) => appointments.filter(a => a.date === ds).sort((a, b) => a.time.localeCompare(b.time));
+  const getBlocks = (ds) => blocks.filter(b => b.date === ds);
 
   return (
     <div style={{ border: `1px solid ${borderC}`, borderRadius: "12px", overflow: "hidden" }}>
@@ -2416,6 +2455,19 @@ const MonthView = ({ year, month, appointments, clients, dark, onClickAppt, toda
                     {appts.length > 3 && (
                       <div style={{ fontSize: "10px", color: mutedText, paddingLeft: "2px" }}>+{appts.length - 3} más</div>
                     )}
+                    {getBlocks(ds).map(b => {
+                      const staffName = STAFF.find(s => s.id === b.staffId)?.name || "?";
+                      return (
+                        <div key={b.id} onClick={() => onClickBlock && onClickBlock(b)} style={{
+                          background: "#64748b22", borderLeft: "3px solid #64748b",
+                          borderRadius: "3px", padding: "2px 4px", marginBottom: "2px",
+                          fontSize: "10px", color: mutedText, cursor: "pointer",
+                          overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
+                        }}>
+                          🔒 {b.timeFrom}–{b.timeTo} {staffName}
+                        </div>
+                      );
+                    })}
                   </>
                 )}
               </div>
@@ -2438,6 +2490,56 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [listFilter, setListFilter] = useState({ staff: "", showPast: false });
   const [showQuickClient, setShowQuickClient] = useState(false);
+  // Bloqueos de horario
+  const [blocks, setBlocks] = useState([]);
+  const [showBlockForm, setShowBlockForm] = useState(false);
+  const [selectedBlock, setSelectedBlock] = useState(null);
+  const emptyBlock = { date: today(), timeFrom: "09:00", timeTo: "12:00", staffId: staffFilter || "", reason: "descanso", notes: "" };
+  const [blockForm, setBlockForm] = useState(emptyBlock);
+  const setBF = (k, v) => setBlockForm(f => ({ ...f, [k]: v }));
+
+  // Cargar bloqueos desde localStorage (no requiere tabla nueva en Supabase)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("tuina_blocks");
+      if (saved) setBlocks(JSON.parse(saved));
+    } catch {}
+  }, []);
+  const saveBlocks = (newBlocks) => {
+    setBlocks(newBlocks);
+    try { localStorage.setItem("tuina_blocks", JSON.stringify(newBlocks)); } catch {}
+  };
+
+  const handleSaveBlock = () => {
+    if (!blockForm.staffId) return alert("Seleccioná una profesional");
+    if (!blockForm.date) return alert("Seleccioná una fecha");
+    if (blockForm.timeFrom >= blockForm.timeTo) return alert("La hora de fin debe ser mayor a la de inicio");
+    const block = { ...blockForm, id: blockForm.id || crypto.randomUUID() };
+    const existing = blocks.find(b => b.id === block.id);
+    const updated = existing ? blocks.map(b => b.id === block.id ? block : b) : [...blocks, block];
+    saveBlocks(updated);
+    setShowBlockForm(false);
+    setBlockForm(emptyBlock);
+  };
+
+  const handleDeleteBlock = (id) => {
+    saveBlocks(blocks.filter(b => b.id !== id));
+    setSelectedBlock(null);
+  };
+
+  // Verificar si un turno nuevo choca con un bloqueo
+  const blockConflict = (date, time, duration, staffId) => {
+    return blocks.some(b => {
+      if (b.staffId !== staffId || b.date !== date) return false;
+      const apptStart = timeToMin(time);
+      const apptEnd = apptStart + (duration || 60);
+      const blockStart = timeToMin(b.timeFrom);
+      const blockEnd = timeToMin(b.timeTo);
+      return apptStart < blockEnd && apptEnd > blockStart;
+    });
+  };
+
+  const visibleBlocks = staffFilter ? blocks.filter(b => b.staffId === staffFilter) : blocks;
 
   const todayStr = today();
 
@@ -2503,6 +2605,10 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
       return a.date === form.date && a.staffId === form.staffId && overlaps(form.time, form.duration, a.time, a.duration);
     });
     if (conflict) return alert("Esa profesional ya tiene un turno en ese horario");
+
+    if (blockConflict(form.date, form.time, form.duration, form.staffId)) {
+      return alert("⛔ Ese horario está bloqueado para esa profesional");
+    }
 
     if (form.room) {
       const roomConflict = appointments.some(a => {
@@ -2619,6 +2725,7 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
         </div>
         <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
           <Tabs tabs={[{ id: "week", label: "Semana" }, { id: "month", label: "Mes" }, { id: "list", label: "Lista" }]} active={calView} onChange={setCalView} dark={dark} />
+          <Button variant="secondary" icon={<span style={{fontSize:"14px"}}>⛔</span>} onClick={() => { setBlockForm(emptyBlock); setShowBlockForm(true); }} size="sm">Bloquear horario</Button>
           <Button icon={<Icons.Plus />} onClick={() => { setEditing(null); setForm(emptyForm); setShowForm(true); }} size="sm">Nuevo Turno</Button>
         </div>
       </div>
@@ -2656,9 +2763,11 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
         <WeekView
           weekDays={weekDays}
           appointments={visibleAppointments}
+          blocks={visibleBlocks}
           clients={clients}
           dark={dark}
           onClickAppt={setSelectedAppt}
+          onClickBlock={setSelectedBlock}
           todayStr={todayStr}
         />
       )}
@@ -2668,9 +2777,11 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
           year={year}
           month={month}
           appointments={visibleAppointments}
+          blocks={visibleBlocks}
           clients={clients}
           dark={dark}
           onClickAppt={setSelectedAppt}
+          onClickBlock={setSelectedBlock}
           todayStr={todayStr}
         />
       )}
@@ -2808,6 +2919,28 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
               <div style={{ fontSize: "11px", fontWeight: 600, color: mutedText, marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 {STAFF.find(s => s.id === form.staffId)?.name} — {formatDate(form.date)}
               </div>
+              {(() => {
+                const dayBlocks = blocks.filter(b => b.staffId === form.staffId && b.date === form.date);
+                return dayBlocks.length > 0 && (
+                  <div style={{ marginBottom: "6px" }}>
+                    {dayBlocks.map(b => {
+                      const reason = BLOCK_REASONS.find(r => r.id === b.reason);
+                      const clashBlock = form.time && (() => {
+                        const as = timeToMin(form.time), ae = as + (form.duration||60);
+                        const bs = timeToMin(b.timeFrom), be = timeToMin(b.timeTo);
+                        return as < be && ae > bs;
+                      })();
+                      return (
+                        <div key={b.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", padding: "4px 8px", borderRadius: "6px", marginBottom: "3px", background: clashBlock ? COLORS.danger + "15" : "#64748b12", border: clashBlock ? `1px solid ${COLORS.danger}40` : "1px solid #64748b30" }}>
+                          <span style={{ fontWeight: 700, color: clashBlock ? COLORS.danger : "#64748b", minWidth: "90px" }}>🔒 {b.timeFrom}–{b.timeTo}</span>
+                          <span style={{ color: clashBlock ? COLORS.danger : "#64748b" }}>{reason?.name || b.reason}</span>
+                          {clashBlock && <span style={{ marginLeft: "auto", fontSize: "11px", fontWeight: 700, color: COLORS.danger }}>⛔ BLOQUEADO</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
               {sameDayAppts.length === 0 ? (
                 <p style={{ fontSize: "12px", color: COLORS.success, margin: 0 }}>✓ Sin turnos ese día — disponible todo el día</p>
               ) : (
@@ -2891,6 +3024,66 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
           </Modal>
         );
       })()}
+      {/* Modal bloqueo de horario - formulario */}
+      <Modal open={showBlockForm} onClose={() => setShowBlockForm(false)} title="Bloquear Horario" dark={dark}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div style={{ padding: "10px 14px", background: dark ? "rgba(100,116,139,0.15)" : "#f1f5f9", borderRadius: "8px", fontSize: "13px", color: dark ? COLORS.textMutedDark : "#475569" }}>
+            ⛔ El horario bloqueado impedirá agendar turnos para esa profesional en ese período.
+          </div>
+          <Input label="Profesional" value={blockForm.staffId} onChange={v => setBF("staffId", v)} required dark={dark}
+            options={STAFF.map(s => ({ value: s.id, label: s.name }))} />
+          <Input label="Fecha" type="date" value={blockForm.date} onChange={v => setBF("date", v)} required dark={dark} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+            <Input label="Hora desde" type="time" value={blockForm.timeFrom} onChange={v => setBF("timeFrom", v)} required dark={dark} />
+            <Input label="Hora hasta" type="time" value={blockForm.timeTo} onChange={v => setBF("timeTo", v)} required dark={dark} />
+          </div>
+          <Input label="Motivo" value={blockForm.reason} onChange={v => setBF("reason", v)} dark={dark}
+            options={BLOCK_REASONS.map(r => ({ value: r.id, label: `${r.icon} ${r.name}` }))} />
+          <Input label="Notas (opcional)" value={blockForm.notes} onChange={v => setBF("notes", v)} dark={dark} rows={2} placeholder="Aclaración adicional..." />
+          <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+            <Button variant="secondary" onClick={() => setShowBlockForm(false)}>Cancelar</Button>
+            <Button onClick={handleSaveBlock} style={{ background: "#475569" }}>Guardar Bloqueo</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal detalle bloqueo */}
+      <Modal open={!!selectedBlock} onClose={() => setSelectedBlock(null)} title="Horario Bloqueado" dark={dark}>
+        {selectedBlock && (() => {
+          const staff = STAFF.find(s => s.id === selectedBlock.staffId);
+          const reason = BLOCK_REASONS.find(r => r.id === selectedBlock.reason);
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                {[
+                  ["Profesional", staff?.name || "—"],
+                  ["Fecha", formatDate(selectedBlock.date)],
+                  ["Desde", selectedBlock.timeFrom],
+                  ["Hasta", selectedBlock.timeTo],
+                  ["Motivo", `${reason?.icon || ""} ${reason?.name || selectedBlock.reason}`],
+                ].map(([l, v]) => (
+                  <div key={l}>
+                    <span style={{ fontSize: "11px", color: COLORS.textMuted, display: "block" }}>{l}</span>
+                    <strong style={{ color: dark ? COLORS.textDark : COLORS.text }}>{v}</strong>
+                  </div>
+                ))}
+              </div>
+              {selectedBlock.notes && (
+                <p style={{ fontSize: "13px", color: dark ? COLORS.textMutedDark : COLORS.textMuted, padding: "8px 12px", background: dark ? "rgba(255,255,255,0.03)" : "#f8f6f3", borderRadius: "8px" }}>{selectedBlock.notes}</p>
+              )}
+              <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                <Button size="sm" variant="secondary" onClick={() => {
+                  setBlockForm(selectedBlock);
+                  setSelectedBlock(null);
+                  setShowBlockForm(true);
+                }}>Editar</Button>
+                <Button size="sm" variant="danger" onClick={() => handleDeleteBlock(selectedBlock.id)}>Eliminar bloqueo</Button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
+
       {/* Modal crear cliente rápido desde turno */}
       <Modal open={showQuickClient} onClose={() => setShowQuickClient(false)} title="Nuevo Cliente" dark={dark}>
         <ClientForm client={null} onSave={handleQuickSaveClient} onCancel={() => setShowQuickClient(false)} dark={dark} />
