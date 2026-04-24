@@ -545,7 +545,6 @@ const NAV_ITEMS = [
   { id: "clients", label: "Clientes", icon: <Icons.Clients />, roles: ["admin", "agenda"] },
   { id: "reports", label: "Reportes", icon: <Icons.Reports />, roles: ["admin"] },
   { id: "appointments", label: "Agenda", icon: <Icons.Calendar />, roles: ["admin", "agenda", "masajista"] },
-  { id: "availability", label: "Disponibilidad", icon: <Icons.Clock />, roles: ["admin", "agenda"] },
   { id: "settings", label: "Config", icon: <Icons.Settings />, roles: ["admin", "agenda", "masajista"] },
 ];
 
@@ -2186,7 +2185,7 @@ function calcColumns(appts) {
   
 
 
-const WeekView = ({ weekDays, appointments, blocks = [], clients, dark, onClickAppt, onClickBlock, todayStr }) => {
+const WeekView = ({ weekDays, appointments, blocks = [], availability = [], clients, dark, onClickAppt, onClickBlock, onClickAvail, todayStr }) => {
   const borderC = dark ? COLORS.borderDark : COLORS.border;
   const cardBg = dark ? COLORS.cardDark : COLORS.card;
   const mutedText = dark ? COLORS.textMutedDark : COLORS.textMuted;
@@ -2195,6 +2194,29 @@ const WeekView = ({ weekDays, appointments, blocks = [], clients, dark, onClickA
   const toDateStr = (d) => localDateStr(d);
   const getAppts = (ds) => appointments.filter(a => a.date === ds).sort((a, b) => a.time.localeCompare(b.time));
   const getBlocks = (ds) => blocks.filter(b => b.date === ds);
+
+  // Disponibilidad efectiva para un día (base + excepciones)
+  const getAvailSlots = (dateObj) => {
+    const ds = localDateStr(dateObj);
+    const dow = dateObj.getDay();
+    const exc = availability.exceptions?.find(e => e.staffId === undefined ? true : true) || null;
+    // Filtramos todas las excepciones del día
+    const dayExceptions = (availability.exceptions || []).filter(e => e.date === ds);
+    const dayBase = (availability.base || []).filter(b => b.dayOfWeek === dow);
+
+    // Agrupar por masajista
+    const result = [];
+    STAFF.forEach((s, idx) => {
+      const exc = dayExceptions.find(e => e.staffId === s.id);
+      const baseSlots = dayBase.filter(b => b.staffId === s.id);
+      if (exc) {
+        if (exc.type !== "libre") result.push({ staffId: s.id, timeFrom: exc.timeFrom, timeTo: exc.timeTo, isException: true, excType: exc.type, color: STAFF_COLORS[idx % STAFF_COLORS.length] });
+      } else if (baseSlots.length > 0) {
+        baseSlots.forEach(slot => result.push({ staffId: s.id, timeFrom: slot.timeFrom, timeTo: slot.timeTo, isException: false, color: STAFF_COLORS[idx % STAFF_COLORS.length] }));
+      }
+    });
+    return result;
+  };
 
   // Calcular hasta qué hora mostrar (mínimo 19, máximo 23)
   const lastHour = (() => {
@@ -2208,6 +2230,9 @@ const WeekView = ({ weekDays, appointments, blocks = [], clients, dark, onClickA
 
   const hours = Array.from({ length: lastHour - CAL_START }, (_, i) => i + CAL_START);
   const totalH = hours.length * HOUR_H;
+
+  // ¿Algún día de la semana tiene disponibilidad?
+  const hasAnyAvail = weekDays.some(d => getAvailSlots(d).length > 0);
 
   return (
     <div style={{ border: `1px solid ${borderC}`, borderRadius: "12px", overflow: "hidden" }}>
@@ -2232,6 +2257,54 @@ const WeekView = ({ weekDays, appointments, blocks = [], clients, dark, onClickA
           );
         })}
       </div>
+
+      {/* Franja de disponibilidad (estilo Google Calendar "todo el día") */}
+      {hasAnyAvail && (
+        <div style={{ display: "grid", gridTemplateColumns: "48px repeat(7, 1fr)", background: dark ? "rgba(255,255,255,0.02)" : "#fafaf8", borderBottom: `1px solid ${borderC}` }}>
+          <div style={{ borderRight: `1px solid ${borderC}`, display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "3px 5px 3px 2px" }}>
+            <span style={{ fontSize: "8px", color: mutedText, lineHeight: 1.2, textAlign: "right" }}>horario</span>
+          </div>
+          {weekDays.map((d, i) => {
+            const slots = getAvailSlots(d);
+            return (
+              <div key={i} style={{ borderRight: i < 6 ? `1px solid ${borderC}` : "none", padding: "3px 3px", display: "flex", flexDirection: "column", gap: "2px", minHeight: "28px" }}>
+                {slots.map((slot, si) => {
+                  const staffName = STAFF.find(s => s.id === slot.staffId)?.name || "";
+                  const isExc = slot.isException;
+                  const excColors = { extra: "#5a8a5e", reducido: "#c49a3c" };
+                  const barColor = isExc ? (excColors[slot.excType] || slot.color) : slot.color;
+                  return (
+                    <div key={si} onClick={() => onClickAvail && onClickAvail(d, slot)}
+                      style={{
+                        background: barColor,
+                        borderRadius: "3px",
+                        padding: "1px 5px",
+                        fontSize: "10px",
+                        fontWeight: 600,
+                        color: "#fff",
+                        cursor: onClickAvail ? "pointer" : "default",
+                        overflow: "hidden",
+                        whiteSpace: "nowrap",
+                        textOverflow: "ellipsis",
+                        opacity: isExc ? 0.85 : 1,
+                        borderLeft: isExc ? `3px solid rgba(255,255,255,0.5)` : "none",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "3px",
+                      }}
+                      title={`${staffName}: ${slot.timeFrom}–${slot.timeTo}${isExc ? " (modificado)" : ""}`}
+                    >
+                      {isExc && <span style={{ fontSize: "9px" }}>⚡</span>}
+                      {slot.timeFrom} a {slot.timeTo}
+                      <span style={{ opacity: 0.75, fontSize: "9px", marginLeft: "2px" }}>{staffName}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Cuerpo scrollable */}
       <div style={{ display: "flex", overflowY: "auto", maxHeight: "560px" }}>
@@ -2500,6 +2573,48 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
   const [blockForm, setBlockForm] = useState(emptyBlock);
   const setBF = (k, v) => setBlockForm(f => ({ ...f, [k]: v }));
 
+  // Disponibilidad de masajistas (horario base + excepciones)
+  const [availBase, setAvailBase] = useState(() => { try { const s = localStorage.getItem("tuina_availability"); return s ? JSON.parse(s) : []; } catch { return []; } });
+  const [availExc, setAvailExc] = useState(() => { try { const s = localStorage.getItem("tuina_avail_exceptions"); return s ? JSON.parse(s) : []; } catch { return []; } });
+  const [showAvailForm, setShowAvailForm] = useState(false);
+  const [availFormDate, setAvailFormDate] = useState(today());
+  const [availFormStaff, setAvailFormStaff] = useState(staffFilter || STAFF[0]?.id || "");
+  const [availTab, setAvailTab] = useState("base"); // "base" | "excepcion"
+  const emptyBase = { dayOfWeek: 1, timeFrom: "08:00", timeTo: "12:00" };
+  const emptyExcAvail = { date: today(), timeFrom: "08:00", timeTo: "12:00", type: "extra", notes: "" };
+  const [availBaseForm, setAvailBaseForm] = useState(emptyBase);
+  const [availExcForm, setAvailExcForm] = useState(emptyExcAvail);
+  const [editingAvailBase, setEditingAvailBase] = useState(null);
+  const [editingAvailExc, setEditingAvailExc] = useState(null);
+
+  const DAY_NAMES_FULL = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+  const AVAIL_EXC_TYPES = [
+    { id: "extra", name: "Horario diferente", color: "#5a8a5e", icon: "🔄" },
+    { id: "reducido", name: "Horario reducido", color: "#c49a3c", icon: "⏱️" },
+    { id: "libre", name: "No disponible / Día libre", color: "#b85450", icon: "🌴" },
+  ];
+
+  const saveAvailBase = (data) => { setAvailBase(data); try { localStorage.setItem("tuina_availability", JSON.stringify(data)); } catch {} };
+  const saveAvailExc = (data) => { setAvailExc(data); try { localStorage.setItem("tuina_avail_exceptions", JSON.stringify(data)); } catch {} };
+
+  const handleSaveAvailBase = () => {
+    if (availBaseForm.timeFrom >= availBaseForm.timeTo) return alert("La hora de fin debe ser mayor a la de inicio");
+    const entry = { ...availBaseForm, dayOfWeek: Number(availBaseForm.dayOfWeek), staffId: availFormStaff, id: editingAvailBase?.id || crypto.randomUUID() };
+    const updated = editingAvailBase ? availBase.map(b => b.id === editingAvailBase.id ? entry : b) : [...availBase, entry];
+    saveAvailBase(updated);
+    setEditingAvailBase(null); setAvailBaseForm(emptyBase);
+  };
+  const handleSaveAvailExc = () => {
+    if (availExcForm.type !== "libre" && availExcForm.timeFrom >= availExcForm.timeTo) return alert("La hora de fin debe ser mayor a la de inicio");
+    const entry = { ...availExcForm, staffId: availFormStaff, id: editingAvailExc?.id || crypto.randomUUID() };
+    const updated = editingAvailExc ? availExc.map(e => e.id === editingAvailExc.id ? entry : e) : [...availExc, entry];
+    saveAvailExc(updated);
+    setEditingAvailExc(null); setAvailExcForm(emptyExcAvail);
+  };
+
+  // Objeto que el WeekView consume
+  const availabilityData = { base: availBase, exceptions: availExc };
+
   // Cargar bloqueos desde localStorage (no requiere tabla nueva en Supabase)
   useEffect(() => {
     try {
@@ -2727,6 +2842,7 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
         </div>
         <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
           <Tabs tabs={[{ id: "week", label: "Semana" }, { id: "month", label: "Mes" }, { id: "list", label: "Lista" }]} active={calView} onChange={setCalView} dark={dark} />
+          <Button variant="secondary" icon={<Icons.Clock />} onClick={() => { setAvailFormStaff(staffFilter || STAFF[0]?.id || ""); setAvailTab("base"); setShowAvailForm(true); }} size="sm">Disponibilidad</Button>
           <Button variant="secondary" icon={<span style={{fontSize:"14px"}}>⛔</span>} onClick={() => { setBlockForm(emptyBlock); setShowBlockForm(true); }} size="sm">Bloquear horario</Button>
           <Button icon={<Icons.Plus />} onClick={() => { setEditing(null); setForm(emptyForm); setShowForm(true); }} size="sm">Nuevo Turno</Button>
         </div>
@@ -2766,10 +2882,18 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
           weekDays={weekDays}
           appointments={visibleAppointments}
           blocks={visibleBlocks}
+          availability={availabilityData}
           clients={clients}
           dark={dark}
           onClickAppt={setSelectedAppt}
           onClickBlock={setSelectedBlock}
+          onClickAvail={(dateObj, slot) => {
+            setAvailFormStaff(slot.staffId);
+            setAvailExcForm({ date: localDateStr(dateObj), timeFrom: slot.timeFrom, timeTo: slot.timeTo, type: slot.isException ? slot.excType : "extra", notes: "" });
+            setEditingAvailExc(availExc.find(e => e.staffId === slot.staffId && e.date === localDateStr(dateObj)) || null);
+            setAvailTab("excepcion");
+            setShowAvailForm(true);
+          }}
           todayStr={todayStr}
         />
       )}
@@ -3089,6 +3213,108 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
       {/* Modal crear cliente rápido desde turno */}
       <Modal open={showQuickClient} onClose={() => setShowQuickClient(false)} title="Nuevo Cliente" dark={dark}>
         <ClientForm client={null} onSave={handleQuickSaveClient} onCancel={() => setShowQuickClient(false)} dark={dark} />
+      </Modal>
+
+      {/* Modal disponibilidad */}
+      <Modal open={showAvailForm} onClose={() => { setShowAvailForm(false); setEditingAvailBase(null); setEditingAvailExc(null); }} title="Disponibilidad de masajistas" dark={dark}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {/* Selector masajista */}
+          <Input label="Masajista" value={availFormStaff} onChange={v => setAvailFormStaff(v)} dark={dark}
+            options={STAFF.map(s => ({ value: s.id, label: s.name }))} />
+
+          {/* Tabs base / excepción */}
+          <Tabs tabs={[{ id: "base", label: "🗓️ Horario base (semanal)" }, { id: "excepcion", label: "⚡ Modificar un día" }]} active={availTab} onChange={setAvailTab} dark={dark} />
+
+          {availTab === "base" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div style={{ padding: "10px 14px", background: dark ? "rgba(124,106,86,0.15)" : "#faf5ef", borderRadius: "8px", fontSize: "13px", color: dark ? COLORS.textMutedDark : "#7c6a56" }}>
+                Este es el horario <strong>recurrente</strong> — se repite todas las semanas en el día elegido.
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                <Input label="Día de la semana" value={String(availBaseForm.dayOfWeek)} onChange={v => setAvailBaseForm(f => ({ ...f, dayOfWeek: Number(v) }))} dark={dark}
+                  options={DAY_NAMES_FULL.map((d, i) => ({ value: String(i), label: d }))} />
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <Input label="Desde" type="time" value={availBaseForm.timeFrom} onChange={v => setAvailBaseForm(f => ({ ...f, timeFrom: v }))} dark={dark} />
+                  <Input label="Hasta" type="time" value={availBaseForm.timeTo} onChange={v => setAvailBaseForm(f => ({ ...f, timeTo: v }))} dark={dark} />
+                </div>
+              </div>
+              <Button onClick={handleSaveAvailBase} size="sm">{editingAvailBase ? "Guardar cambios" : "Agregar horario base"}</Button>
+
+              {/* Lista horarios base de esta masajista */}
+              {availBase.filter(b => b.staffId === availFormStaff).length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <span style={{ fontSize: "11px", fontWeight: 600, color: dark ? COLORS.textMutedDark : COLORS.textMuted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Horarios configurados</span>
+                  {availBase.filter(b => b.staffId === availFormStaff).sort((a,b) => a.dayOfWeek - b.dayOfWeek).map(b => (
+                    <div key={b.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", borderRadius: "8px", background: dark ? "rgba(255,255,255,0.04)" : "#f8f6f3", border: `1px solid ${dark ? COLORS.borderDark : COLORS.border}` }}>
+                      <span style={{ fontSize: "13px", fontWeight: 600, color: dark ? COLORS.textDark : COLORS.text, minWidth: "80px" }}>{DAY_NAMES_FULL[b.dayOfWeek]}</span>
+                      <span style={{ fontSize: "13px", color: getStaffColor(availFormStaff), fontWeight: 700 }}>{b.timeFrom} – {b.timeTo}</span>
+                      <div style={{ marginLeft: "auto", display: "flex", gap: "4px" }}>
+                        <button onClick={() => { setEditingAvailBase(b); setAvailBaseForm(b); }} style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.textMuted, padding: "2px" }}><Icons.Edit /></button>
+                        <button onClick={() => saveAvailBase(availBase.filter(x => x.id !== b.id))} style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, padding: "2px" }}><Icons.Trash /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {availTab === "excepcion" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div style={{ padding: "10px 14px", background: dark ? "rgba(124,106,86,0.15)" : "#faf5ef", borderRadius: "8px", fontSize: "13px", color: dark ? COLORS.textMutedDark : "#7c6a56" }}>
+                ⚡ Sobreescribe el horario base <strong>solo para ese día</strong>. Ideal para cuando trabajó mucho el día anterior o surge algo puntual.
+              </div>
+              <Input label="Fecha" type="date" value={availExcForm.date} onChange={v => setAvailExcForm(f => ({ ...f, date: v }))} dark={dark} />
+              <div>
+                <div style={{ fontSize: "12px", fontWeight: 500, color: dark ? COLORS.textMutedDark : COLORS.textMuted, marginBottom: "6px" }}>Tipo</div>
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                  {AVAIL_EXC_TYPES.map(et => (
+                    <button key={et.id} onClick={() => setAvailExcForm(f => ({ ...f, type: et.id }))} style={{
+                      padding: "6px 14px", borderRadius: "20px", border: `2px solid ${availExcForm.type === et.id ? et.color : (dark ? COLORS.borderDark : COLORS.border)}`,
+                      background: availExcForm.type === et.id ? et.color + "20" : "transparent",
+                      color: availExcForm.type === et.id ? et.color : (dark ? COLORS.textMutedDark : COLORS.textMuted),
+                      cursor: "pointer", fontSize: "12px", fontWeight: availExcForm.type === et.id ? 700 : 400,
+                      fontFamily: "var(--font-body)",
+                    }}>{et.icon} {et.name}</button>
+                  ))}
+                </div>
+              </div>
+              {availExcForm.type !== "libre" && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                  <Input label="Desde" type="time" value={availExcForm.timeFrom} onChange={v => setAvailExcForm(f => ({ ...f, timeFrom: v }))} dark={dark} />
+                  <Input label="Hasta" type="time" value={availExcForm.timeTo} onChange={v => setAvailExcForm(f => ({ ...f, timeTo: v }))} dark={dark} />
+                </div>
+              )}
+              <Input label="Notas (opcional)" value={availExcForm.notes} onChange={v => setAvailExcForm(f => ({ ...f, notes: v }))} dark={dark} rows={2} placeholder="Ej: Viene cansada, horario reducido..." />
+              <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                {editingAvailExc && <Button variant="danger" size="sm" onClick={() => { saveAvailExc(availExc.filter(e => e.id !== editingAvailExc.id)); setEditingAvailExc(null); setAvailExcForm(emptyExcAvail); }}>Quitar modificación</Button>}
+                <Button onClick={handleSaveAvailExc}>{editingAvailExc ? "Guardar cambios" : "Guardar"}</Button>
+              </div>
+
+              {/* Lista de excepciones próximas de esta masajista */}
+              {availExc.filter(e => e.staffId === availFormStaff && e.date >= today()).length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <span style={{ fontSize: "11px", fontWeight: 600, color: dark ? COLORS.textMutedDark : COLORS.textMuted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Modificaciones próximas</span>
+                  {availExc.filter(e => e.staffId === availFormStaff && e.date >= today()).sort((a,b) => a.date.localeCompare(b.date)).map(exc => {
+                    const et = AVAIL_EXC_TYPES.find(t => t.id === exc.type);
+                    return (
+                      <div key={exc.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", borderRadius: "8px", background: (et?.color || "#888") + "12", border: `1px solid ${(et?.color || "#888") + "30"}` }}>
+                        <span>{et?.icon}</span>
+                        <span style={{ fontSize: "12px", fontWeight: 600, color: dark ? COLORS.textDark : COLORS.text }}>{formatDate(exc.date)}</span>
+                        {exc.type !== "libre" && <span style={{ fontSize: "12px", color: et?.color, fontWeight: 700 }}>{exc.timeFrom}–{exc.timeTo}</span>}
+                        <Badge color={et?.color}>{et?.name}</Badge>
+                        <div style={{ marginLeft: "auto", display: "flex", gap: "4px" }}>
+                          <button onClick={() => { setEditingAvailExc(exc); setAvailExcForm(exc); }} style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.textMuted, padding: "2px" }}><Icons.Edit /></button>
+                          <button onClick={() => saveAvailExc(availExc.filter(e => e.id !== exc.id))} style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, padding: "2px" }}><Icons.Trash /></button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </Modal>
 
     </div>
@@ -3663,7 +3889,6 @@ export default function App() {
       case "clients": return <ClientsPage clients={data.clients} setClients={updateField("clients")} services={data.services} payments={data.payments} appointments={data.appointments} user={currentUser} dark={dark} />;
       case "reports": return <ReportsPage appointments={data.appointments || []} services={data.services} payments={data.payments} setPayments={updateField("payments")} clients={data.clients} user={currentUser} dark={dark} />;
       case "appointments": return <AppointmentsPage appointments={data.appointments || []} setAppointments={updateField("appointments")} clients={data.clients} setClients={updateField("clients")} user={currentUser} staffFilter={role === "masajista" ? staffId : null} dark={dark} />;
-      case "availability": return <AvailabilityPage dark={dark} />;
       case "settings": return <SettingsPage user={currentUser} dark={dark} data={data} />;
       default: return null;
     }
