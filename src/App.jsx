@@ -170,6 +170,7 @@ const Icons = {
   Alert: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
   Check: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>,
   Filter: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>,
+  Clock: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
 };
 
 // ─── GLOBAL STYLES ──────────────────────────────────────────────────────────
@@ -544,6 +545,7 @@ const NAV_ITEMS = [
   { id: "clients", label: "Clientes", icon: <Icons.Clients />, roles: ["admin", "agenda"] },
   { id: "reports", label: "Reportes", icon: <Icons.Reports />, roles: ["admin"] },
   { id: "appointments", label: "Agenda", icon: <Icons.Calendar />, roles: ["admin", "agenda", "masajista"] },
+  { id: "availability", label: "Disponibilidad", icon: <Icons.Clock />, roles: ["admin", "agenda"] },
   { id: "settings", label: "Config", icon: <Icons.Settings />, roles: ["admin", "agenda", "masajista"] },
 ];
 
@@ -3093,6 +3095,417 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
   );
 };
 
+const AvailabilityPage = ({ dark }) => {
+  const borderC = dark ? COLORS.borderDark : COLORS.border;
+  const mainText = dark ? COLORS.textDark : COLORS.text;
+  const mutedText = dark ? COLORS.textMutedDark : COLORS.textMuted;
+  const cardBg = dark ? COLORS.cardDark : COLORS.card;
+
+  // ── Disponibilidad base (horario semanal recurrente) ──
+  // Estructura: { staffId, dayOfWeek (0=dom..6=sab), timeFrom, timeTo, id }
+  const [baseAvailability, setBaseAvailability] = useState(() => {
+    try { const s = localStorage.getItem("tuina_availability"); return s ? JSON.parse(s) : []; } catch { return []; }
+  });
+
+  // ── Excepciones/modificaciones por fecha específica ──
+  // Estructura: { staffId, date, timeFrom, timeTo, type: "extra"|"reducido"|"libre", notes, id }
+  const [exceptions, setExceptions] = useState(() => {
+    try { const s = localStorage.getItem("tuina_avail_exceptions"); return s ? JSON.parse(s) : []; } catch { return []; }
+  });
+
+  const saveBase = (data) => { setBaseAvailability(data); try { localStorage.setItem("tuina_availability", JSON.stringify(data)); } catch {} };
+  const saveExc = (data) => { setExceptions(data); try { localStorage.setItem("tuina_avail_exceptions", JSON.stringify(data)); } catch {} };
+
+  const [selectedStaff, setSelectedStaff] = useState(STAFF[0]?.id || "");
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [showBaseForm, setShowBaseForm] = useState(false);
+  const [showExcForm, setShowExcForm] = useState(false);
+  const [editingBase, setEditingBase] = useState(null);
+  const [editingExc, setEditingExc] = useState(null);
+
+  const DAY_NAMES = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+  const DAY_NAMES_FULL = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+  const EXC_TYPES = [
+    { id: "extra", name: "Horario extra / diferente", color: "#5a8a5e", icon: "🔄" },
+    { id: "reducido", name: "Horario reducido", color: "#c49a3c", icon: "⏱️" },
+    { id: "libre", name: "No disponible / Día libre", color: "#b85450", icon: "🌴" },
+  ];
+
+  // Semana mostrada (lun-dom)
+  const weekDays = useMemo(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const mon = new Date(now);
+    mon.setDate(now.getDate() + (day === 0 ? -6 : 1 - day) + weekOffset * 7);
+    mon.setHours(0, 0, 0, 0);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(mon); d.setDate(mon.getDate() + i); return d;
+    });
+  }, [weekOffset]);
+
+  const weekLabel = useMemo(() => {
+    const from = weekDays[0].toLocaleDateString("es-AR", { day: "numeric", month: "short" });
+    const to = weekDays[6].toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" });
+    return `${from} – ${to}`;
+  }, [weekDays]);
+
+  const staffBase = baseAvailability.filter(b => b.staffId === selectedStaff);
+  const staffExc = exceptions.filter(e => e.staffId === selectedStaff);
+
+  // Disponibilidad efectiva para un día concreto
+  const getEffectiveAvailability = (dateObj) => {
+    const dow = dateObj.getDay();
+    const dateStr = localDateStr(dateObj);
+    const exc = staffExc.find(e => e.date === dateStr);
+    if (exc) return exc.type === "libre" ? null : { timeFrom: exc.timeFrom, timeTo: exc.timeTo, isException: true, exc };
+    const base = staffBase.filter(b => b.dayOfWeek === dow);
+    return base.length > 0 ? { slots: base, isBase: true } : null;
+  };
+
+  // Formulario horario base
+  const emptyBase = { dayOfWeek: 1, timeFrom: "08:00", timeTo: "12:00" };
+  const [baseForm, setBaseForm] = useState(emptyBase);
+  const setBF = (k, v) => setBaseForm(f => ({ ...f, [k]: v }));
+
+  const handleSaveBase = () => {
+    if (baseForm.timeFrom >= baseForm.timeTo) return alert("La hora de fin debe ser mayor a la de inicio");
+    const entry = { ...baseForm, dayOfWeek: Number(baseForm.dayOfWeek), staffId: selectedStaff, id: editingBase?.id || crypto.randomUUID() };
+    const updated = editingBase
+      ? baseAvailability.map(b => b.id === editingBase.id ? entry : b)
+      : [...baseAvailability, entry];
+    saveBase(updated);
+    setShowBaseForm(false); setEditingBase(null); setBaseForm(emptyBase);
+  };
+
+  const handleDeleteBase = (id) => { saveBase(baseAvailability.filter(b => b.id !== id)); };
+
+  // Formulario excepción
+  const emptyExc = { date: today(), timeFrom: "08:00", timeTo: "12:00", type: "extra", notes: "" };
+  const [excForm, setExcForm] = useState(emptyExc);
+  const setEF = (k, v) => setExcForm(f => ({ ...f, [k]: v }));
+
+  const handleSaveExc = () => {
+    if (excForm.type !== "libre" && excForm.timeFrom >= excForm.timeTo) return alert("La hora de fin debe ser mayor a la de inicio");
+    const entry = { ...excForm, staffId: selectedStaff, id: editingExc?.id || crypto.randomUUID() };
+    const updated = editingExc
+      ? exceptions.map(e => e.id === editingExc.id ? entry : e)
+      : [...exceptions, entry];
+    saveExc(updated);
+    setShowExcForm(false); setEditingExc(null); setExcForm(emptyExc);
+  };
+
+  const handleDeleteExc = (id) => { saveExc(exceptions.filter(e => e.id !== id)); };
+
+  const todayStr = today();
+  const staffColor = getStaffColor(selectedStaff);
+
+  return (
+    <div className="animate-fade" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+        <div>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: "26px", fontWeight: 600, color: mainText }}>Disponibilidad</h2>
+          <p style={{ fontSize: "13px", color: mutedText }}>Horarios de atención por masajista</p>
+        </div>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <Button variant="secondary" size="sm" icon={<span style={{fontSize:"13px"}}>📅</span>}
+            onClick={() => { setEditingExc(null); setExcForm(emptyExc); setShowExcForm(true); }}>
+            Modificar un día
+          </Button>
+          <Button size="sm" icon={<Icons.Plus />}
+            onClick={() => { setEditingBase(null); setBaseForm(emptyBase); setShowBaseForm(true); }}>
+            Agregar horario base
+          </Button>
+        </div>
+      </div>
+
+      {/* Selector de masajista */}
+      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+        {STAFF.map((s, i) => {
+          const sc = STAFF_COLORS[i % STAFF_COLORS.length];
+          const active = s.id === selectedStaff;
+          return (
+            <button key={s.id} onClick={() => setSelectedStaff(s.id)} style={{
+              padding: "8px 16px", borderRadius: "20px", border: `2px solid ${active ? sc : borderC}`,
+              background: active ? sc + "20" : "transparent", color: active ? sc : mutedText,
+              cursor: "pointer", fontSize: "13px", fontWeight: active ? 700 : 400,
+              fontFamily: "var(--font-body)", transition: "all 0.15s",
+              display: "flex", alignItems: "center", gap: "6px",
+            }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: sc, display: "inline-block" }} />
+              {s.name}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Horario base semanal */}
+      <div style={{ background: cardBg, borderRadius: "14px", border: `1px solid ${borderC}`, overflow: "hidden" }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${borderC}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h3 style={{ fontSize: "15px", fontWeight: 600, color: mainText }}>🗓️ Horario base semanal</h3>
+            <p style={{ fontSize: "12px", color: mutedText, marginTop: "2px" }}>Los días y franjas en que {STAFF.find(s=>s.id===selectedStaff)?.name} está disponible por defecto</p>
+          </div>
+        </div>
+        <div style={{ padding: "16px 20px" }}>
+          {/* Grilla de días */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "8px" }}>
+            {[1,2,3,4,5,6,0].map(dow => {
+              const daySlots = staffBase.filter(b => b.dayOfWeek === dow);
+              const hasSlots = daySlots.length > 0;
+              return (
+                <div key={dow} style={{
+                  borderRadius: "10px", padding: "12px 10px", textAlign: "center", minHeight: "90px",
+                  background: hasSlots ? (staffColor + "12") : (dark ? "rgba(255,255,255,0.03)" : "#f8f6f3"),
+                  border: `1.5px solid ${hasSlots ? staffColor + "40" : borderC}`,
+                  display: "flex", flexDirection: "column", gap: "6px",
+                }}>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: hasSlots ? staffColor : mutedText, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    {DAY_NAMES[dow]}
+                  </span>
+                  {hasSlots ? daySlots.map(slot => (
+                    <div key={slot.id} style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                      <span style={{ fontSize: "13px", fontWeight: 700, color: mainText, lineHeight: 1.2 }}>
+                        {slot.timeFrom}
+                      </span>
+                      <span style={{ fontSize: "10px", color: mutedText }}>a</span>
+                      <span style={{ fontSize: "13px", fontWeight: 700, color: mainText, lineHeight: 1.2 }}>
+                        {slot.timeTo}
+                      </span>
+                      <div style={{ display: "flex", gap: "3px", justifyContent: "center", marginTop: "2px" }}>
+                        <button onClick={() => { setEditingBase(slot); setBaseForm(slot); setShowBaseForm(true); }}
+                          style={{ background: "none", border: "none", cursor: "pointer", color: mutedText, padding: "2px", fontSize: "11px" }} title="Editar">✏️</button>
+                        <button onClick={() => handleDeleteBase(slot.id)}
+                          style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, padding: "2px", fontSize: "11px" }} title="Eliminar">✕</button>
+                      </div>
+                    </div>
+                  )) : (
+                    <span style={{ fontSize: "11px", color: mutedText, marginTop: "auto", marginBottom: "auto" }}>—</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {staffBase.length === 0 && (
+            <p style={{ textAlign: "center", fontSize: "13px", color: mutedText, marginTop: "12px" }}>
+              No hay horarios base configurados para {STAFF.find(s=>s.id===selectedStaff)?.name}. Hacé click en "Agregar horario base" para empezar.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Vista semanal con disponibilidad efectiva */}
+      <div style={{ background: cardBg, borderRadius: "14px", border: `1px solid ${borderC}`, overflow: "hidden" }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${borderC}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+          <div>
+            <h3 style={{ fontSize: "15px", fontWeight: 600, color: mainText }}>📆 Vista semanal</h3>
+            <p style={{ fontSize: "12px", color: mutedText, marginTop: "2px" }}>Disponibilidad real considerando excepciones</p>
+          </div>
+          <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+            <button onClick={() => setWeekOffset(w => w - 1)} style={{ background: "none", border: `1px solid ${borderC}`, borderRadius: "8px", cursor: "pointer", padding: "5px 10px", color: mainText, fontFamily: "var(--font-body)" }}>‹</button>
+            <button onClick={() => setWeekOffset(0)} style={{ background: "none", border: `1px solid ${borderC}`, borderRadius: "8px", cursor: "pointer", padding: "5px 10px", fontSize: "12px", color: mutedText, fontFamily: "var(--font-body)" }}>Hoy</button>
+            <button onClick={() => setWeekOffset(w => w + 1)} style={{ background: "none", border: `1px solid ${borderC}`, borderRadius: "8px", cursor: "pointer", padding: "5px 10px", color: mainText, fontFamily: "var(--font-body)" }}>›</button>
+            <span style={{ fontSize: "13px", fontWeight: 600, color: mainText, minWidth: "180px", textAlign: "center" }}>{weekLabel}</span>
+          </div>
+        </div>
+        <div style={{ padding: "16px 20px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "8px" }}>
+            {weekDays.map((dateObj) => {
+              const dateStr = localDateStr(dateObj);
+              const isT = dateStr === todayStr;
+              const dow = dateObj.getDay();
+              const avail = getEffectiveAvailability(dateObj);
+              const dayExc = staffExc.find(e => e.date === dateStr);
+              const excType = dayExc ? EXC_TYPES.find(t => t.id === dayExc.type) : null;
+              const dayLabel = dateObj.toLocaleDateString("es-AR", { day: "numeric", month: "short" });
+
+              let bgColor, borderColor, statusIcon, statusText, timeText;
+              if (!avail) {
+                bgColor = dark ? "rgba(255,255,255,0.02)" : "#f8f6f3";
+                borderColor = borderC;
+                statusIcon = "—";
+                statusText = "No disponible";
+                timeText = null;
+              } else if (avail.isException) {
+                const et = EXC_TYPES.find(t => t.id === avail.exc.type);
+                bgColor = (et?.color || staffColor) + "15";
+                borderColor = (et?.color || staffColor) + "50";
+                statusIcon = excType?.icon || "🔄";
+                statusText = "Modificado";
+                timeText = `${avail.timeFrom} – ${avail.timeTo}`;
+              } else {
+                bgColor = staffColor + "12";
+                borderColor = staffColor + "40";
+                statusIcon = "✓";
+                statusText = "Disponible";
+                timeText = avail.slots.map(s => `${s.timeFrom}–${s.timeTo}`).join(", ");
+              }
+
+              return (
+                <div key={dateStr} style={{
+                  borderRadius: "10px", padding: "12px 10px", minHeight: "110px",
+                  background: bgColor, border: `1.5px solid ${isT ? staffColor : borderColor}`,
+                  display: "flex", flexDirection: "column", gap: "4px",
+                  boxShadow: isT ? `0 0 0 2px ${staffColor}30` : "none",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 700, color: isT ? staffColor : mutedText, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      {DAY_NAMES[dow]}
+                    </span>
+                    {isT && <span style={{ fontSize: "9px", background: staffColor, color: "#fff", borderRadius: "4px", padding: "1px 5px", fontWeight: 700 }}>HOY</span>}
+                  </div>
+                  <span style={{ fontSize: "12px", color: mainText, fontWeight: 600 }}>{dayLabel}</span>
+                  <span style={{ fontSize: "16px", marginTop: "2px" }}>{statusIcon}</span>
+                  {timeText && (
+                    <span style={{ fontSize: "11px", fontWeight: 700, color: avail?.isException ? (excType?.color || staffColor) : staffColor, lineHeight: 1.3 }}>
+                      {timeText}
+                    </span>
+                  )}
+                  {!timeText && <span style={{ fontSize: "11px", color: mutedText }}>{statusText}</span>}
+                  {dayExc && (
+                    <span style={{ fontSize: "10px", color: excType?.color, fontWeight: 600 }}>{excType?.name}</span>
+                  )}
+                  {/* Botón modificar/quitar excepción */}
+                  <div style={{ marginTop: "auto", display: "flex", gap: "3px", justifyContent: "flex-end" }}>
+                    {dayExc ? (
+                      <>
+                        <button onClick={() => { setEditingExc(dayExc); setExcForm(dayExc); setShowExcForm(true); }}
+                          title="Editar excepción" style={{ background: "none", border: "none", cursor: "pointer", color: mutedText, fontSize: "11px", padding: "2px" }}>✏️</button>
+                        <button onClick={() => handleDeleteExc(dayExc.id)}
+                          title="Quitar excepción" style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, fontSize: "11px", padding: "2px" }}>✕</button>
+                      </>
+                    ) : (
+                      <button onClick={() => { setEditingExc(null); setExcForm({ ...emptyExc, date: dateStr }); setShowExcForm(true); }}
+                        title="Modificar este día" style={{ background: "none", border: "none", cursor: "pointer", color: mutedText, fontSize: "11px", padding: "2px", opacity: 0.6 }}>✏️</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {/* Leyenda */}
+          <div style={{ display: "flex", gap: "16px", marginTop: "14px", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "11px", color: mutedText }}>
+              <span style={{ width: 10, height: 10, borderRadius: "3px", background: staffColor + "30", border: `1px solid ${staffColor + "60"}`, display: "inline-block" }} />
+              Disponible (base)
+            </div>
+            {EXC_TYPES.map(et => (
+              <div key={et.id} style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "11px", color: mutedText }}>
+                <span style={{ width: 10, height: 10, borderRadius: "3px", background: et.color + "30", border: `1px solid ${et.color + "60"}`, display: "inline-block" }} />
+                {et.name}
+              </div>
+            ))}
+            <div style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "11px", color: mutedText }}>
+              <span style={{ width: 10, height: 10, borderRadius: "3px", background: borderC, border: `1px solid ${borderC}`, display: "inline-block" }} />
+              Sin disponibilidad
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Lista de excepciones futuras */}
+      {staffExc.filter(e => e.date >= todayStr).length > 0 && (
+        <div style={{ background: cardBg, borderRadius: "14px", border: `1px solid ${borderC}`, overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: `1px solid ${borderC}` }}>
+            <h3 style={{ fontSize: "14px", fontWeight: 600, color: mainText }}>⚡ Modificaciones próximas</h3>
+          </div>
+          <div style={{ padding: "12px 20px", display: "flex", flexDirection: "column", gap: "6px" }}>
+            {staffExc.filter(e => e.date >= todayStr).sort((a,b) => a.date.localeCompare(b.date)).map(exc => {
+              const et = EXC_TYPES.find(t => t.id === exc.type);
+              return (
+                <div key={exc.id} style={{
+                  display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px",
+                  borderRadius: "8px", background: (et?.color || staffColor) + "12",
+                  border: `1px solid ${(et?.color || staffColor) + "30"}`,
+                }}>
+                  <span style={{ fontSize: "16px" }}>{et?.icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: "13px", fontWeight: 600, color: mainText }}>
+                      {new Date(exc.date + "T12:00:00").toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })}
+                    </span>
+                    <span style={{ fontSize: "12px", color: mutedText, marginLeft: "8px" }}>
+                      {exc.type !== "libre" ? `${exc.timeFrom} – ${exc.timeTo}` : ""}
+                    </span>
+                    {exc.notes && <span style={{ fontSize: "12px", color: mutedText, marginLeft: "8px" }}>· {exc.notes}</span>}
+                  </div>
+                  <Badge color={et?.color || staffColor}>{et?.name}</Badge>
+                  <button onClick={() => { setEditingExc(exc); setExcForm(exc); setShowExcForm(true); }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: mutedText, padding: "4px" }}><Icons.Edit /></button>
+                  <button onClick={() => handleDeleteExc(exc.id)}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, padding: "4px" }}><Icons.Trash /></button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Agregar/editar horario base */}
+      <Modal open={showBaseForm} onClose={() => { setShowBaseForm(false); setEditingBase(null); }} title={editingBase ? "Editar horario base" : "Agregar horario base"} dark={dark}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div style={{ padding: "10px 14px", background: dark ? "rgba(124,106,86,0.15)" : "#faf5ef", borderRadius: "8px", fontSize: "13px", color: dark ? COLORS.textMutedDark : "#7c6a56" }}>
+            🗓️ Este es el horario <strong>recurrente</strong> — se repite todas las semanas en el día elegido, a menos que hagas una modificación puntual.
+          </div>
+          <div style={{ fontSize: "13px", fontWeight: 600, color: mainText }}>
+            Masajista: <span style={{ color: staffColor }}>{STAFF.find(s => s.id === selectedStaff)?.name}</span>
+          </div>
+          <Input label="Día de la semana" value={String(baseForm.dayOfWeek)} onChange={v => setBF("dayOfWeek", Number(v))} dark={dark}
+            options={DAY_NAMES_FULL.map((d, i) => ({ value: String(i), label: d }))} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+            <Input label="Hora de inicio" type="time" value={baseForm.timeFrom} onChange={v => setBF("timeFrom", v)} dark={dark} />
+            <Input label="Hora de fin" type="time" value={baseForm.timeTo} onChange={v => setBF("timeTo", v)} dark={dark} />
+          </div>
+          <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+            <Button variant="secondary" onClick={() => { setShowBaseForm(false); setEditingBase(null); }}>Cancelar</Button>
+            <Button onClick={handleSaveBase}>Guardar</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal: Modificar un día puntual */}
+      <Modal open={showExcForm} onClose={() => { setShowExcForm(false); setEditingExc(null); }} title={editingExc ? "Editar modificación" : "Modificar disponibilidad un día"} dark={dark}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div style={{ padding: "10px 14px", background: dark ? "rgba(124,106,86,0.15)" : "#faf5ef", borderRadius: "8px", fontSize: "13px", color: dark ? COLORS.textMutedDark : "#7c6a56" }}>
+            ⚡ Esto <strong>sobreescribe el horario base</strong> solo para ese día. Por ejemplo: si la masajista trabajó mucho ayer y el horario de mañana va a ser más corto.
+          </div>
+          <div style={{ fontSize: "13px", fontWeight: 600, color: mainText }}>
+            Masajista: <span style={{ color: staffColor }}>{STAFF.find(s => s.id === selectedStaff)?.name}</span>
+          </div>
+          <Input label="Fecha" type="date" value={excForm.date} onChange={v => setEF("date", v)} dark={dark} />
+          <div>
+            <div style={{ fontSize: "12px", fontWeight: 500, color: mutedText, marginBottom: "6px" }}>Tipo de modificación</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {EXC_TYPES.map(et => (
+                <button key={et.id} onClick={() => setEF("type", et.id)} style={{
+                  padding: "10px 14px", borderRadius: "8px", border: `2px solid ${excForm.type === et.id ? et.color : borderC}`,
+                  background: excForm.type === et.id ? et.color + "15" : "transparent",
+                  cursor: "pointer", textAlign: "left", fontFamily: "var(--font-body)",
+                  display: "flex", alignItems: "center", gap: "10px",
+                }}>
+                  <span style={{ fontSize: "16px" }}>{et.icon}</span>
+                  <span style={{ fontSize: "13px", fontWeight: excForm.type === et.id ? 700 : 400, color: excForm.type === et.id ? et.color : mainText }}>{et.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          {excForm.type !== "libre" && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+              <Input label="Hora de inicio" type="time" value={excForm.timeFrom} onChange={v => setEF("timeFrom", v)} dark={dark} />
+              <Input label="Hora de fin" type="time" value={excForm.timeTo} onChange={v => setEF("timeTo", v)} dark={dark} />
+            </div>
+          )}
+          <Input label="Notas (opcional)" value={excForm.notes} onChange={v => setEF("notes", v)} dark={dark} rows={2} placeholder="Ej: Viene cansada del fin de semana, horario reducido..." />
+          <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+            <Button variant="secondary" onClick={() => { setShowExcForm(false); setEditingExc(null); }}>Cancelar</Button>
+            <Button onClick={handleSaveExc}>Guardar</Button>
+          </div>
+        </div>
+      </Modal>
+
+    </div>
+  );
+};
+
 const SettingsPage = ({ user, dark, data }) => {
   return (
     <div className="animate-fade" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -3250,6 +3663,7 @@ export default function App() {
       case "clients": return <ClientsPage clients={data.clients} setClients={updateField("clients")} services={data.services} payments={data.payments} appointments={data.appointments} user={currentUser} dark={dark} />;
       case "reports": return <ReportsPage appointments={data.appointments || []} services={data.services} payments={data.payments} setPayments={updateField("payments")} clients={data.clients} user={currentUser} dark={dark} />;
       case "appointments": return <AppointmentsPage appointments={data.appointments || []} setAppointments={updateField("appointments")} clients={data.clients} setClients={updateField("clients")} user={currentUser} staffFilter={role === "masajista" ? staffId : null} dark={dark} />;
+      case "availability": return <AvailabilityPage dark={dark} />;
       case "settings": return <SettingsPage user={currentUser} dark={dark} data={data} />;
       default: return null;
     }
