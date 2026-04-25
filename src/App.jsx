@@ -5,7 +5,8 @@ import { supabase } from './supabase.js'
 
 // ─── CONSTANTS & SEED DATA ───────────────────────────────────────────────────
 
-const MASSAGE_TYPES = [
+// Defaults — se sobreescriben desde Supabase al cargar la app
+let MASSAGE_TYPES = [
   { id: "descontracturante", name: "Descontracturante", category: "Terapéutico", basePrice: 8000 },
   { id: "relajante", name: "Relajante", category: "Bienestar", basePrice: 6500 },
   { id: "deportivo", name: "Deportivo", category: "Terapéutico", basePrice: 9000 },
@@ -44,14 +45,14 @@ const ROLES = [
   { id: "masajista", name: "Masajista" },
 ];
 
-const STAFF = [
-  { id: "s1", name: "Flor", specialty: "Terapéutico" },
-  { id: "s2", name: "Luciana", specialty: "Deportivo" },
-  { id: "s3", name: "Mariela", specialty: "Relajante" },
-  { id: "s5", name: "Rocio", specialty: "Estética" },
+let STAFF = [
+  { id: "s1", name: "Flor", specialty: "Terapéutico", phone: "" },
+  { id: "s2", name: "Luciana", specialty: "Deportivo", phone: "" },
+  { id: "s3", name: "Mariela", specialty: "Relajante", phone: "" },
+  { id: "s5", name: "Rocio", specialty: "Estética", phone: "" },
 ];
 
-const ROOMS = ["Sala 1", "Sala 2"];
+let ROOMS = ["Sala 1", "Sala 2"];
 
 const BLOCK_REASONS = [
   { id: "descanso", name: "Descanso / No disponible", icon: "😴" },
@@ -214,59 +215,6 @@ const globalCSS = `
     .zen-overlay { display: block; }
     .zen-mobile-bar { display: flex; }
     .zen-main { margin-left: 0 !important; padding: 68px 12px 20px !important; }
-
-    /* Inputs nunca menos de 16px → evita zoom automático de iOS */
-    .zen-main input, .zen-main select, .zen-main textarea {
-      font-size: 16px !important;
-    }
-
-    /* Modales: el overlay scrollea (mejor compat iOS Safari) */
-    .zen-modal-overlay {
-      padding: 0 !important;
-      align-items: flex-start !important;
-    }
-    .zen-modal-content {
-      width: 100% !important;
-      max-width: 100% !important;
-      border-radius: 0 !important;
-      margin: 0 !important;
-      min-height: 100vh;
-    }
-
-    /* Calendario semanal: scroll horizontal con ancho mínimo */
-    .zen-week-scroll {
-      overflow-x: auto !important;
-      -webkit-overflow-scrolling: touch;
-      width: 100%;
-    }
-    .zen-week-scroll > div {
-      min-width: 700px;
-    }
-
-    /* Tabs scrolleable horizontal */
-    .zen-tabs-scroll {
-      overflow-x: auto !important;
-      -webkit-overflow-scrolling: touch;
-      flex-wrap: nowrap !important;
-    }
-    .zen-tabs-scroll > * {
-      flex-shrink: 0;
-    }
-
-    /* Charts más bajos en mobile */
-    .recharts-responsive-container {
-      min-height: 200px !important;
-    }
-
-    /* Headers de página: ajustar tamaño */
-    .zen-main h2 {
-      font-size: 22px !important;
-    }
-  }
-
-  /* Mobile chico (iPhone SE etc) */
-  @media (max-width: 380px) {
-    .zen-main { padding: 64px 8px 16px !important; }
   }
 `;
 
@@ -425,24 +373,16 @@ const Modal = ({ open, onClose, title, children, wide, dark }) => {
   useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden";
-      document.body.style.position = "fixed";
-      document.body.style.width = "100%";
       if (contentRef.current) contentRef.current.scrollTop = 0;
     } else {
       document.body.style.overflow = "";
-      document.body.style.position = "";
-      document.body.style.width = "";
     }
-    return () => {
-      document.body.style.overflow = "";
-      document.body.style.position = "";
-      document.body.style.width = "";
-    };
+    return () => { document.body.style.overflow = ""; };
   }, [open]);
 
   if (!open) return null;
   return (
-    <div className="zen-modal-overlay" style={{
+    <div style={{
       position: "fixed", 
       top: 0, left: 0, right: 0, bottom: 0,
       width: "100vw", height: "100vh",
@@ -450,29 +390,24 @@ const Modal = ({ open, onClose, title, children, wide, dark }) => {
       display: "flex", alignItems: "center", justifyContent: "center",
       zIndex: 99999,
       padding: "20px",
-      overflowY: "auto",
-      WebkitOverflowScrolling: "touch",
     }} onClick={onClose}>
-      <div className="animate-scale zen-modal-content" onClick={e => e.stopPropagation()} style={{
+      <div className="animate-scale" onClick={e => e.stopPropagation()} style={{
         background: dark ? COLORS.surfaceDark : COLORS.surface, borderRadius: "16px",
         width: wide ? "min(1000px, 96vw)" : "min(560px, 92vw)",
+        maxHeight: "92vh",
         border: `1px solid ${dark ? COLORS.borderDark : COLORS.border}`,
         boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
         display: "flex", flexDirection: "column",
-        margin: "auto",
       }}>
         <div style={{
           display: "flex", justifyContent: "space-between", alignItems: "center",
           padding: "18px 24px", borderBottom: `1px solid ${dark ? COLORS.borderDark : COLORS.border}`,
           flexShrink: 0,
-          position: "sticky", top: 0, zIndex: 2,
-          background: dark ? COLORS.surfaceDark : COLORS.surface,
-          borderRadius: "16px 16px 0 0",
         }}>
           <h3 style={{ fontFamily: "var(--font-display)", fontSize: "18px", fontWeight: 600, color: dark ? COLORS.textDark : COLORS.text }}>{title}</h3>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: dark ? COLORS.textMutedDark : COLORS.textMuted, padding: "4px" }}><Icons.Close /></button>
         </div>
-        <div ref={contentRef} className="zen-modal-body" style={{ padding: "24px" }}>{children}</div>
+        <div ref={contentRef} style={{ padding: "24px", overflowY: "auto", flex: 1, minHeight: 0 }}>{children}</div>
       </div>
     </div>
   );
@@ -543,7 +478,7 @@ const ConfirmDialog = ({ open, onConfirm, onCancel, message, dark }) => (
 );
 
 const Tabs = ({ tabs, active, onChange, dark }) => (
-  <div className="zen-tabs-scroll" style={{ display: "flex", gap: "2px", background: dark ? COLORS.cardDark : "#f0ede8", borderRadius: "10px", padding: "3px" }}>
+  <div style={{ display: "flex", gap: "2px", background: dark ? COLORS.cardDark : "#f0ede8", borderRadius: "10px", padding: "3px" }}>
     {tabs.map(tab => (
       <button key={tab.id} onClick={() => onChange(tab.id)} style={{
         padding: "8px 16px", fontSize: "12px", fontWeight: 500,
@@ -2288,10 +2223,10 @@ const WeekView = ({ weekDays, appointments, blocks = [], availability = [], clie
   const lastHour = (() => {
     const allAppts = weekDays.flatMap(d => getAppts(toDateStr(d)));
     const allBlocks = weekDays.flatMap(d => getBlocks(toDateStr(d)));
-    if (allAppts.length === 0 && allBlocks.length === 0) return 22;
+    if (allAppts.length === 0 && allBlocks.length === 0) return 21;
     const maxAppt = allAppts.length > 0 ? Math.max(...allAppts.map(a => timeToMin(a.time) + (a.duration || 60))) : 0;
     const maxBlock = allBlocks.length > 0 ? Math.max(...allBlocks.map(b => timeToMin(b.timeTo))) : 0;
-    return Math.min(Math.max(Math.ceil(Math.max(maxAppt, maxBlock) / 60) + 1, 22), 24);
+    return Math.min(Math.max(Math.ceil(Math.max(maxAppt, maxBlock) / 60) + 1, 21), 23);
   })();
 
   const hours = Array.from({ length: lastHour - CAL_START }, (_, i) => i + CAL_START);
@@ -2301,7 +2236,6 @@ const WeekView = ({ weekDays, appointments, blocks = [], availability = [], clie
   const hasAnyAvail = weekDays.some(d => getAvailSlots(d).length > 0);
 
   return (
-    <div className="zen-week-scroll">
     <div style={{ border: `1px solid ${borderC}`, borderRadius: "12px", overflow: "hidden" }}>
       {/* Encabezado días */}
       <div style={{ display: "grid", gridTemplateColumns: "48px repeat(7, 1fr)", background: dark ? COLORS.cardDark : "#faf9f7", borderBottom: `1px solid ${borderC}` }}>
@@ -2529,7 +2463,6 @@ const WeekView = ({ weekDays, appointments, blocks = [], availability = [], clie
           );
         })}
       </div>
-    </div>
     </div>
   );
 };
@@ -3227,8 +3160,7 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
         const client = clients.find(c => c.id === notifAppt.clientId);
         const mt = MASSAGE_TYPES.find(t => t.id === notifAppt.massageTypeId);
         const emoji = action === "eliminado" ? "❌" : action === "modificado" ? "✏️" : "📅";
-        const getPhone = (sid) => { try { return JSON.parse(localStorage.getItem("zen_staff_phones") || "{}")[sid] || ""; } catch { return ""; } };
-        const phone = getPhone(notifAppt.staffId);
+        const phone = STAFF.find(s => s.id === notifAppt.staffId)?.phone || "";
         const msg = encodeURIComponent(`Hola ${staff?.name?.split(" ")[0] || ""}! Tu turno fue ${action}:\n${emoji} ${action.charAt(0).toUpperCase()+action.slice(1)}\n📅 Fecha: ${formatDate(notifAppt.date)}\n🕐 Hora: ${notifAppt.time}\n👤 Cliente: ${client?.name || "—"}\n💆 Tipo: ${mt?.name || "—"}\n⏱ Duración: ${notifAppt.duration} min`);
         const waUrl = phone ? `https://wa.me/${phone.replace(/\D/g,"")}?text=${msg}` : `https://wa.me/?text=${msg}`;
         const titleMap = { agendado: "Turno creado ✓", modificado: "Turno editado ✓", eliminado: "Turno eliminado" };
@@ -3905,18 +3837,37 @@ export default function App() {
   const [dark, setDark] = useState(false);
   const [data, setData] = useState({ clients: [], services: [], payments: [], appointments: [] });
 
-  // Cargar datos desde Supabase
+  // Cargar datos y configuración desde Supabase
   const loadData = useCallback(async () => {
-    const [clients, services, payments, appointments] = await Promise.all([
+    const [clients, services, payments, appointments, massageTypesRes, staffRes, roomsRes] = await Promise.all([
       supabase.from('clients').select('*'),
       supabase.from('services').select('*'),
       supabase.from('payments').select('*'),
       supabase.from('appointments').select('*'),
+      supabase.from('massage_types').select('*').eq('active', true).order('sort_order'),
+      supabase.from('staff').select('*').eq('active', true).order('sort_order'),
+      supabase.from('rooms').select('*').eq('active', true).order('sort_order'),
     ]);
     if (clients.error) console.error("clients:", clients.error);
     if (services.error) console.error("services:", services.error);
     if (payments.error) console.error("payments:", payments.error);
     if (appointments.error) console.error("appointments:", appointments.error);
+
+    // Actualizar configuración dinámica (si Supabase responde bien)
+    if (massageTypesRes.data?.length) {
+      MASSAGE_TYPES = massageTypesRes.data.map(r => ({
+        id: r.id, name: r.name, category: r.category, basePrice: r.base_price,
+      }));
+    }
+    if (staffRes.data?.length) {
+      STAFF = staffRes.data.map(r => ({
+        id: r.id, name: r.name, specialty: r.specialty || '', phone: r.phone || '',
+      }));
+    }
+    if (roomsRes.data?.length) {
+      ROOMS = roomsRes.data.map(r => r.name);
+    }
+
     setData({
       clients: clients.data || [],
       services: (services.data || []).map(mapService),
@@ -3927,50 +3878,24 @@ export default function App() {
 
   // Sesión de Supabase Auth
   useEffect(() => {
-    const init = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        console.log("Session inicial:", session?.user?.email || "ninguna");
+    // Timeout de seguridad: si algo falla silenciosamente, igual mostramos la app
+    const safetyTimeout = setTimeout(() => {
+      console.warn("Timeout de seguridad activado — forzando appReady");
+      setAppReady(true);
+    }, 6000);
 
-        if (!session) {
-          setAppReady(true);
-          return;
-        }
-
-        // Hay sesión — cargar usuario y datos
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('*')
-          .eq('auth_id', session.user.id)
-          .single();
-
-        if (userError) {
-          console.error("Error cargando usuario:", userError);
-        } else {
-          setCurrentUser(userData);
-          await loadData();
-        }
-      } catch (e) {
-        console.error("Error en init:", e);
-      } finally {
-        setAppReady(true);
-      }
-    };
-
-    init();
-
-    // Listener solo para cambios posteriores (login/logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log("Auth event:", event, session?.user?.email);
 
-      if (event === 'SIGNED_OUT') {
+      if (event === 'SIGNED_OUT' || !session) {
+        clearTimeout(safetyTimeout);
         setCurrentUser(null);
         setData({ clients: [], services: [], payments: [], appointments: [] });
         setAppReady(true);
         return;
       }
 
-      if (event === 'SIGNED_IN') {
+      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
         setAppReady(false);
         try {
           const { data: userData, error: userError } = await supabase
@@ -3987,12 +3912,16 @@ export default function App() {
         } catch (e) {
           console.error("Error inesperado en auth:", e);
         } finally {
+          clearTimeout(safetyTimeout);
           setAppReady(true);
         }
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(safetyTimeout);
+      subscription.unsubscribe();
+    };
   }, [loadData]);
 
   const handleLogin = async ({ email, password }) => {
