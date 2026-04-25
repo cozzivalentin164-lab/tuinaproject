@@ -3929,7 +3929,7 @@ useEffect(() => {
         .from('users')
         .select('*')
         .eq('id', session.user.id)
-        .single();
+        .maybeSingle();
       if (error || !userData) {
         console.error("Error cargando usuario:", error);
         setCurrentUser(null);
