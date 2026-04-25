@@ -3859,24 +3859,50 @@ export default function App() {
 
   // Sesión de Supabase Auth
   useEffect(() => {
-    // Timeout de seguridad: si algo falla silenciosamente, igual mostramos la app
-    const safetyTimeout = setTimeout(() => {
-      console.warn("Timeout de seguridad activado — forzando appReady");
-      setAppReady(true);
-    }, 6000);
+    const init = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log("Session inicial:", session?.user?.email || "ninguna");
 
+        if (!session) {
+          setAppReady(true);
+          return;
+        }
+
+        // Hay sesión — cargar usuario y datos
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('auth_id', session.user.id)
+          .single();
+
+        if (userError) {
+          console.error("Error cargando usuario:", userError);
+        } else {
+          setCurrentUser(userData);
+          await loadData();
+        }
+      } catch (e) {
+        console.error("Error en init:", e);
+      } finally {
+        setAppReady(true);
+      }
+    };
+
+    init();
+
+    // Listener solo para cambios posteriores (login/logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log("Auth event:", event, session?.user?.email);
 
-      if (event === 'SIGNED_OUT' || !session) {
-        clearTimeout(safetyTimeout);
+      if (event === 'SIGNED_OUT') {
         setCurrentUser(null);
         setData({ clients: [], services: [], payments: [], appointments: [] });
         setAppReady(true);
         return;
       }
 
-      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+      if (event === 'SIGNED_IN') {
         setAppReady(false);
         try {
           const { data: userData, error: userError } = await supabase
@@ -3893,16 +3919,12 @@ export default function App() {
         } catch (e) {
           console.error("Error inesperado en auth:", e);
         } finally {
-          clearTimeout(safetyTimeout);
           setAppReady(true);
         }
       }
     });
 
-    return () => {
-      clearTimeout(safetyTimeout);
-      subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, [loadData]);
 
   const handleLogin = async ({ email, password }) => {
