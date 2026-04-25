@@ -3928,7 +3928,7 @@ useEffect(() => {
       const { data: userData, error } = await supabase
         .from('users')
         .select('*')
-        .eq('auth_id', session.user.id)
+        .eq('id', session.user.id)
         .single();
       if (error || !userData) {
         console.error("Error cargando usuario:", error);
