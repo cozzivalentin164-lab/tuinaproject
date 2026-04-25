@@ -3839,90 +3839,110 @@ export default function App() {
 
   // Cargar datos y configuración desde Supabase
   const loadData = useCallback(async () => {
-    const [clients, services, payments, appointments, massageTypesRes, staffRes, roomsRes] = await Promise.all([
-      supabase.from('clients').select('*'),
-      supabase.from('services').select('*'),
-      supabase.from('payments').select('*'),
-      supabase.from('appointments').select('*'),
-      supabase.from('massage_types').select('*').eq('active', true).order('sort_order'),
-      supabase.from('staff').select('*').eq('active', true).order('sort_order'),
-      supabase.from('rooms').select('*').eq('active', true).order('sort_order'),
-    ]);
-    if (clients.error) console.error("clients:", clients.error);
-    if (services.error) console.error("services:", services.error);
-    if (payments.error) console.error("payments:", payments.error);
-    if (appointments.error) console.error("appointments:", appointments.error);
+    try {
+      // Cargar datos principales
+      const [clients, services, payments, appointments] = await Promise.all([
+        supabase.from('clients').select('*'),
+        supabase.from('services').select('*'),
+        supabase.from('payments').select('*'),
+        supabase.from('appointments').select('*'),
+      ]);
 
-    // Actualizar configuración dinámica (si Supabase responde bien)
-    if (massageTypesRes.data?.length) {
-      MASSAGE_TYPES = massageTypesRes.data.map(r => ({
-        id: r.id, name: r.name, category: r.category, basePrice: r.base_price,
-      }));
-    }
-    if (staffRes.data?.length) {
-      STAFF = staffRes.data.map(r => ({
-        id: r.id, name: r.name, specialty: r.specialty || '', phone: r.phone || '',
-      }));
-    }
-    if (roomsRes.data?.length) {
-      ROOMS = roomsRes.data.map(r => r.name);
-    }
+      setData({
+        clients: clients.data || [],
+        services: (services.data || []).map(mapService),
+        payments: (payments.data || []).map(mapPayment),
+        appointments: (appointments.data || []).map(mapAppointment),
+      });
 
-    setData({
-      clients: clients.data || [],
-      services: (services.data || []).map(mapService),
-      payments: (payments.data || []).map(mapPayment),
-      appointments: (appointments.data || []).map(mapAppointment),
-    });
+      // Cargar configuración dinámica (no bloquea si falla)
+      try {
+        const [massageTypesRes, staffRes, roomsRes] = await Promise.all([
+          supabase.from('massage_types').select('*').eq('active', true).order('sort_order'),
+          supabase.from('staff').select('*').eq('active', true).order('sort_order'),
+          supabase.from('rooms').select('*').eq('active', true).order('sort_order'),
+        ]);
+        if (massageTypesRes.data?.length) {
+          MASSAGE_TYPES = massageTypesRes.data.map(r => ({
+            id: r.id, name: r.name, category: r.category, basePrice: r.base_price,
+          }));
+        }
+        if (staffRes.data?.length) {
+          STAFF = staffRes.data.map(r => ({
+            id: r.id, name: r.name, specialty: r.specialty || '', phone: r.phone || '',
+          }));
+        }
+        if (roomsRes.data?.length) {
+          ROOMS = roomsRes.data.map(r => r.name);
+        }
+      } catch (configErr) {
+        console.warn("Config dinámica no disponible, usando defaults:", configErr);
+      }
+    } catch (e) {
+      console.error("Error cargando datos:", e);
+    }
   }, []);
 
-  // Sesión de Supabase Auth
-  useEffect(() => {
-    // Timeout de seguridad: si algo falla silenciosamente, igual mostramos la app
-    const safetyTimeout = setTimeout(() => {
-      console.warn("Timeout de seguridad activado — forzando appReady");
+  // ── AUTH: simple y blindado ──
+  const initUser = useCallback(async (session) => {
+    try {
+      const { data: userData, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('auth_id', session.user.id)
+        .single();
+      if (error || !userData) {
+        console.error("Error cargando usuario:", error);
+        setCurrentUser(null);
+      } else {
+        setCurrentUser(userData);
+        await loadData();
+      }
+    } catch (e) {
+      console.error("Error en initUser:", e);
+      setCurrentUser(null);
+    } finally {
       setAppReady(true);
-    }, 6000);
+    }
+  }, [loadData]);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("Auth event:", event, session?.user?.email);
+  useEffect(() => {
+    let mounted = true;
+    let initDone = false;
 
-      if (event === 'SIGNED_OUT' || !session) {
-        clearTimeout(safetyTimeout);
+    // 1. Chequear sesión existente al arrancar
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
+      initDone = true;
+      if (session) {
+        initUser(session);
+      } else {
+        setAppReady(true);
+      }
+    });
+
+    // 2. Escuchar cambios posteriores (login/logout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      // Ignorar el evento inicial (ya lo manejó getSession)
+      if (!initDone) return;
+
+      if (event === 'SIGNED_IN' && session) {
+        setAppReady(false);
+        initUser(session);
+      }
+      if (event === 'SIGNED_OUT') {
         setCurrentUser(null);
         setData({ clients: [], services: [], payments: [], appointments: [] });
         setAppReady(true);
-        return;
-      }
-
-      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-        setAppReady(false);
-        try {
-          const { data: userData, error: userError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('auth_id', session.user.id)
-            .single();
-          if (userError) {
-            console.error("Error cargando usuario:", userError);
-          } else {
-            setCurrentUser(userData);
-            await loadData();
-          }
-        } catch (e) {
-          console.error("Error inesperado en auth:", e);
-        } finally {
-          clearTimeout(safetyTimeout);
-          setAppReady(true);
-        }
       }
     });
 
     return () => {
-      clearTimeout(safetyTimeout);
+      mounted = false;
       subscription.unsubscribe();
     };
-  }, [loadData]);
+  }, [initUser]);
 
   const handleLogin = async ({ email, password }) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
