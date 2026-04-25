@@ -300,22 +300,7 @@ const ClientSearchInput = ({ value, onChange, clients, required, dark, label = "
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
-  useEffect(() => {
-  // 1. Obtener sesión al cargar
-  supabase.auth.getSession().then(({ data }) => {
-    setSession(data.session);
-    setLoadingAuth(false);
-  });
-
-  // 2. Escuchar cambios (login/logout)
-  const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-    setSession(session);
-  });
-
-  return () => {
-    listener.subscription.unsubscribe();
-  };
-}, []);
+  
 
   // Sincronizar el texto con el cliente seleccionado
   const selectedClient = clients.find(c => c.id === value);
