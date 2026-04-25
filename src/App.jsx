@@ -3842,6 +3842,30 @@ const SettingsPage = ({ user, dark, data }) => {
 export default function App() {
   useEffect(() => { document.title = "Tuina Admin"; }, []);
 
+const handleLogin = async ({ email, password }) => {
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) throw error;
+};
+
+useEffect(() => {
+  supabase.auth.getSession().then(({ data }) => {
+    setSession(data.session);
+    setLoadingAuth(false);
+  });
+
+  const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    setSession(session);
+  });
+
+  return () => {
+    listener.subscription.unsubscribe();
+  };
+}, []);
+
   const [currentUser, setCurrentUser] = useState(null);
   const [appReady, setAppReady] = useState(false);
   const [activePage, setActivePage] = useState("dashboard");
@@ -3967,10 +3991,7 @@ if (!session) {
     };
   }, [initUser]);
 
-  const handleLogin = async ({ email, password }) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-  };
+   
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
