@@ -2574,8 +2574,8 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
   const setBF = (k, v) => setBlockForm(f => ({ ...f, [k]: v }));
 
   // Disponibilidad de masajistas (horario base + excepciones)
-  const [availBase, setAvailBase] = useState(() => { try { const s = localStorage.getItem("tuina_availability"); return s ? JSON.parse(s) : []; } catch { return []; } });
-  const [availExc, setAvailExc] = useState(() => { try { const s = localStorage.getItem("tuina_avail_exceptions"); return s ? JSON.parse(s) : []; } catch { return []; } });
+  const [availBase, setAvailBase] = useState([]);
+  const [availExc, setAvailExc] = useState([]);
   const [showAvailForm, setShowAvailForm] = useState(false);
   const [availFormDate, setAvailFormDate] = useState(today());
   const [availFormStaff, setAvailFormStaff] = useState(staffFilter || STAFF[0]?.id || "");
@@ -2594,53 +2594,137 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
     { id: "libre", name: "No disponible / Día libre", color: "#b85450", icon: "🌴" },
   ];
 
-  const saveAvailBase = (data) => { setAvailBase(data); try { localStorage.setItem("tuina_availability", JSON.stringify(data)); } catch {} };
-  const saveAvailExc = (data) => { setAvailExc(data); try { localStorage.setItem("tuina_avail_exceptions", JSON.stringify(data)); } catch {} };
+  const mapAvailBase = (r) => ({
+    id: r.id, staffId: r.staff_id, dayOfWeek: r.day_of_week,
+    timeFrom: r.time_from?.slice(0, 5), timeTo: r.time_to?.slice(0, 5),
+  });
+  const mapAvailExc = (r) => ({
+    id: r.id, staffId: r.staff_id, date: r.date, type: r.type,
+    timeFrom: r.time_from?.slice(0, 5) || '', timeTo: r.time_to?.slice(0, 5) || '',
+    notes: r.notes || '',
+  });
 
-  const handleSaveAvailBase = () => {
+  const handleSaveAvailBase = async () => {
     if (availBaseForm.timeFrom >= availBaseForm.timeTo) return alert("La hora de fin debe ser mayor a la de inicio");
-    const entry = { ...availBaseForm, dayOfWeek: Number(availBaseForm.dayOfWeek), staffId: availFormStaff, id: editingAvailBase?.id || crypto.randomUUID() };
-    const updated = editingAvailBase ? availBase.map(b => b.id === editingAvailBase.id ? entry : b) : [...availBase, entry];
-    saveAvailBase(updated);
+    const row = {
+      staff_id: availFormStaff,
+      day_of_week: Number(availBaseForm.dayOfWeek),
+      time_from: availBaseForm.timeFrom,
+      time_to: availBaseForm.timeTo,
+    };
+    if (editingAvailBase) {
+      const { error } = await supabase.from('availability_base').update(row).eq('id', editingAvailBase.id);
+      if (error) { alert("Error: " + error.message); return; }
+    } else {
+      const { error } = await supabase.from('availability_base').insert({ ...row, id: crypto.randomUUID() });
+      if (error) { alert("Error: " + error.message); return; }
+    }
+    const { data: updated } = await supabase.from('availability_base').select('*');
+    setAvailBase((updated || []).map(mapAvailBase));
     setEditingAvailBase(null); setAvailBaseForm(emptyBase);
   };
-  const handleSaveAvailExc = () => {
+
+  const handleDeleteAvailBase = async (id) => {
+    await supabase.from('availability_base').delete().eq('id', id);
+    setAvailBase(prev => prev.filter(x => x.id !== id));
+  };
+
+  const handleSaveAvailExc = async () => {
     if (availExcForm.type !== "libre" && availExcForm.timeFrom >= availExcForm.timeTo) return alert("La hora de fin debe ser mayor a la de inicio");
-    const entry = { ...availExcForm, staffId: availFormStaff, id: editingAvailExc?.id || crypto.randomUUID() };
-    const updated = editingAvailExc ? availExc.map(e => e.id === editingAvailExc.id ? entry : e) : [...availExc, entry];
-    saveAvailExc(updated);
+    const row = {
+      staff_id: availFormStaff,
+      date: availExcForm.date,
+      type: availExcForm.type,
+      time_from: availExcForm.type !== "libre" ? availExcForm.timeFrom : null,
+      time_to: availExcForm.type !== "libre" ? availExcForm.timeTo : null,
+      notes: availExcForm.notes || null,
+    };
+    if (editingAvailExc) {
+      const { error } = await supabase.from('availability_exceptions').update(row).eq('id', editingAvailExc.id);
+      if (error) { alert("Error: " + error.message); return; }
+    } else {
+      const { error } = await supabase.from('availability_exceptions').insert({ ...row, id: crypto.randomUUID() });
+      if (error) { alert("Error: " + error.message); return; }
+    }
+    const { data: updated } = await supabase.from('availability_exceptions').select('*');
+    setAvailExc((updated || []).map(mapAvailExc));
     setEditingAvailExc(null); setAvailExcForm(emptyExcAvail);
+  };
+
+  const handleDeleteAvailExc = async (id) => {
+    await supabase.from('availability_exceptions').delete().eq('id', id);
+    setAvailExc(prev => prev.filter(e => e.id !== id));
   };
 
   // Objeto que el WeekView consume
   const availabilityData = { base: availBase, exceptions: availExc };
 
-  // Cargar bloqueos desde localStorage (no requiere tabla nueva en Supabase)
+  // Cargar blocks y disponibilidad desde Supabase
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("tuina_blocks");
-      if (saved) setBlocks(JSON.parse(saved));
-    } catch {}
+    const loadScheduleData = async () => {
+      try {
+        const [blocksRes, availBaseRes, availExcRes] = await Promise.all([
+          supabase.from('schedule_blocks').select('*'),
+          supabase.from('availability_base').select('*'),
+          supabase.from('availability_exceptions').select('*'),
+        ]);
+        if (blocksRes.data) {
+          setBlocks(blocksRes.data.map(r => ({
+            id: r.id, staffId: r.staff_id, date: r.date,
+            timeFrom: r.time_from?.slice(0, 5), timeTo: r.time_to?.slice(0, 5),
+            reason: r.reason, notes: r.notes || '',
+          })));
+        }
+        if (availBaseRes.data) {
+          setAvailBase(availBaseRes.data.map(r => ({
+            id: r.id, staffId: r.staff_id, dayOfWeek: r.day_of_week,
+            timeFrom: r.time_from?.slice(0, 5), timeTo: r.time_to?.slice(0, 5),
+          })));
+        }
+        if (availExcRes.data) {
+          setAvailExc(availExcRes.data.map(r => ({
+            id: r.id, staffId: r.staff_id, date: r.date, type: r.type,
+            timeFrom: r.time_from?.slice(0, 5) || '', timeTo: r.time_to?.slice(0, 5) || '',
+            notes: r.notes || '',
+          })));
+        }
+      } catch (e) {
+        console.error("Error cargando disponibilidad:", e);
+      }
+    };
+    loadScheduleData();
   }, []);
-  const saveBlocks = (newBlocks) => {
-    setBlocks(newBlocks);
-    try { localStorage.setItem("tuina_blocks", JSON.stringify(newBlocks)); } catch {}
-  };
 
-  const handleSaveBlock = () => {
+  const handleSaveBlock = async () => {
     if (!blockForm.staffId) return alert("Seleccioná una profesional");
     if (!blockForm.date) return alert("Seleccioná una fecha");
     if (blockForm.timeFrom >= blockForm.timeTo) return alert("La hora de fin debe ser mayor a la de inicio");
-    const block = { ...blockForm, id: blockForm.id || crypto.randomUUID() };
-    const existing = blocks.find(b => b.id === block.id);
-    const updated = existing ? blocks.map(b => b.id === block.id ? block : b) : [...blocks, block];
-    saveBlocks(updated);
+    const row = {
+      staff_id: blockForm.staffId, date: blockForm.date,
+      time_from: blockForm.timeFrom, time_to: blockForm.timeTo,
+      reason: blockForm.reason, notes: blockForm.notes || null,
+    };
+    if (blockForm.id) {
+      const { error } = await supabase.from('schedule_blocks').update(row).eq('id', blockForm.id);
+      if (error) { alert("Error al guardar: " + error.message); return; }
+    } else {
+      const { error } = await supabase.from('schedule_blocks').insert({ ...row, id: crypto.randomUUID() });
+      if (error) { alert("Error al guardar: " + error.message); return; }
+    }
+    const { data: updated } = await supabase.from('schedule_blocks').select('*');
+    setBlocks((updated || []).map(r => ({
+      id: r.id, staffId: r.staff_id, date: r.date,
+      timeFrom: r.time_from?.slice(0, 5), timeTo: r.time_to?.slice(0, 5),
+      reason: r.reason, notes: r.notes || '',
+    })));
     setShowBlockForm(false);
     setBlockForm(emptyBlock);
   };
 
-  const handleDeleteBlock = (id) => {
-    saveBlocks(blocks.filter(b => b.id !== id));
+  const handleDeleteBlock = async (id) => {
+    const { error } = await supabase.from('schedule_blocks').delete().eq('id', id);
+    if (error) { alert("Error al eliminar: " + error.message); return; }
+    setBlocks(prev => prev.filter(b => b.id !== id));
     setSelectedBlock(null);
   };
 
@@ -3250,7 +3334,7 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
                       <span style={{ fontSize: "13px", color: getStaffColor(availFormStaff), fontWeight: 700 }}>{b.timeFrom} – {b.timeTo}</span>
                       <div style={{ marginLeft: "auto", display: "flex", gap: "4px" }}>
                         <button onClick={() => { setEditingAvailBase(b); setAvailBaseForm(b); }} style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.textMuted, padding: "2px" }}><Icons.Edit /></button>
-                        <button onClick={() => saveAvailBase(availBase.filter(x => x.id !== b.id))} style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, padding: "2px" }}><Icons.Trash /></button>
+                        <button onClick={() => handleDeleteAvailBase(b.id)} style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, padding: "2px" }}><Icons.Trash /></button>
                       </div>
                     </div>
                   ))}
@@ -3287,7 +3371,7 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
               )}
               <Input label="Notas (opcional)" value={availExcForm.notes} onChange={v => setAvailExcForm(f => ({ ...f, notes: v }))} dark={dark} rows={2} placeholder="Ej: Viene cansada, horario reducido..." />
               <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-                {editingAvailExc && <Button variant="danger" size="sm" onClick={() => { saveAvailExc(availExc.filter(e => e.id !== editingAvailExc.id)); setEditingAvailExc(null); setAvailExcForm(emptyExcAvail); }}>Quitar modificación</Button>}
+                {editingAvailExc && <Button variant="danger" size="sm" onClick={() => handleDeleteAvailExc(editingAvailExc.id)}>Quitar modificación</Button>}
                 <Button onClick={handleSaveAvailExc}>{editingAvailExc ? "Guardar cambios" : "Guardar"}</Button>
               </div>
 
@@ -3305,7 +3389,7 @@ const AppointmentsPage = ({ appointments, setAppointments, clients, setClients, 
                         <Badge color={et?.color}>{et?.name}</Badge>
                         <div style={{ marginLeft: "auto", display: "flex", gap: "4px" }}>
                           <button onClick={() => { setEditingAvailExc(exc); setAvailExcForm(exc); }} style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.textMuted, padding: "2px" }}><Icons.Edit /></button>
-                          <button onClick={() => saveAvailExc(availExc.filter(e => e.id !== exc.id))} style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, padding: "2px" }}><Icons.Trash /></button>
+                          <button onClick={() => handleDeleteAvailExc(exc.id)} style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, padding: "2px" }}><Icons.Trash /></button>
                         </div>
                       </div>
                     );
@@ -3329,18 +3413,33 @@ const AvailabilityPage = ({ dark }) => {
 
   // ── Disponibilidad base (horario semanal recurrente) ──
   // Estructura: { staffId, dayOfWeek (0=dom..6=sab), timeFrom, timeTo, id }
-  const [baseAvailability, setBaseAvailability] = useState(() => {
-    try { const s = localStorage.getItem("tuina_availability"); return s ? JSON.parse(s) : []; } catch { return []; }
-  });
+  const [baseAvailability, setBaseAvailability] = useState([]);
 
   // ── Excepciones/modificaciones por fecha específica ──
   // Estructura: { staffId, date, timeFrom, timeTo, type: "extra"|"reducido"|"libre", notes, id }
-  const [exceptions, setExceptions] = useState(() => {
-    try { const s = localStorage.getItem("tuina_avail_exceptions"); return s ? JSON.parse(s) : []; } catch { return []; }
+  const [exceptions, setExceptions] = useState([]);
+
+  const mapBase = (r) => ({
+    id: r.id, staffId: r.staff_id, dayOfWeek: r.day_of_week,
+    timeFrom: r.time_from?.slice(0, 5), timeTo: r.time_to?.slice(0, 5),
+  });
+  const mapExc = (r) => ({
+    id: r.id, staffId: r.staff_id, date: r.date, type: r.type,
+    timeFrom: r.time_from?.slice(0, 5) || '', timeTo: r.time_to?.slice(0, 5) || '',
+    notes: r.notes || '',
   });
 
-  const saveBase = (data) => { setBaseAvailability(data); try { localStorage.setItem("tuina_availability", JSON.stringify(data)); } catch {} };
-  const saveExc = (data) => { setExceptions(data); try { localStorage.setItem("tuina_avail_exceptions", JSON.stringify(data)); } catch {} };
+  useEffect(() => {
+    const load = async () => {
+      const [baseRes, excRes] = await Promise.all([
+        supabase.from('availability_base').select('*'),
+        supabase.from('availability_exceptions').select('*'),
+      ]);
+      if (baseRes.data) setBaseAvailability(baseRes.data.map(mapBase));
+      if (excRes.data) setExceptions(excRes.data.map(mapExc));
+    };
+    load();
+  }, []);
 
   const [selectedStaff, setSelectedStaff] = useState(STAFF[0]?.id || "");
   const [weekOffset, setWeekOffset] = useState(0);
@@ -3393,34 +3492,62 @@ const AvailabilityPage = ({ dark }) => {
   const [baseForm, setBaseForm] = useState(emptyBase);
   const setBF = (k, v) => setBaseForm(f => ({ ...f, [k]: v }));
 
-  const handleSaveBase = () => {
+  const handleSaveBase = async () => {
     if (baseForm.timeFrom >= baseForm.timeTo) return alert("La hora de fin debe ser mayor a la de inicio");
-    const entry = { ...baseForm, dayOfWeek: Number(baseForm.dayOfWeek), staffId: selectedStaff, id: editingBase?.id || crypto.randomUUID() };
-    const updated = editingBase
-      ? baseAvailability.map(b => b.id === editingBase.id ? entry : b)
-      : [...baseAvailability, entry];
-    saveBase(updated);
+    const row = {
+      staff_id: selectedStaff,
+      day_of_week: Number(baseForm.dayOfWeek),
+      time_from: baseForm.timeFrom,
+      time_to: baseForm.timeTo,
+    };
+    if (editingBase) {
+      const { error } = await supabase.from('availability_base').update(row).eq('id', editingBase.id);
+      if (error) { alert("Error: " + error.message); return; }
+    } else {
+      const { error } = await supabase.from('availability_base').insert({ ...row, id: crypto.randomUUID() });
+      if (error) { alert("Error: " + error.message); return; }
+    }
+    const { data: updated } = await supabase.from('availability_base').select('*');
+    setBaseAvailability((updated || []).map(mapBase));
     setShowBaseForm(false); setEditingBase(null); setBaseForm(emptyBase);
   };
 
-  const handleDeleteBase = (id) => { saveBase(baseAvailability.filter(b => b.id !== id)); };
+  const handleDeleteBase = async (id) => {
+    await supabase.from('availability_base').delete().eq('id', id);
+    setBaseAvailability(prev => prev.filter(b => b.id !== id));
+  };
 
   // Formulario excepción
   const emptyExc = { date: today(), timeFrom: "08:00", timeTo: "12:00", type: "extra", notes: "" };
   const [excForm, setExcForm] = useState(emptyExc);
   const setEF = (k, v) => setExcForm(f => ({ ...f, [k]: v }));
 
-  const handleSaveExc = () => {
+  const handleSaveExc = async () => {
     if (excForm.type !== "libre" && excForm.timeFrom >= excForm.timeTo) return alert("La hora de fin debe ser mayor a la de inicio");
-    const entry = { ...excForm, staffId: selectedStaff, id: editingExc?.id || crypto.randomUUID() };
-    const updated = editingExc
-      ? exceptions.map(e => e.id === editingExc.id ? entry : e)
-      : [...exceptions, entry];
-    saveExc(updated);
+    const row = {
+      staff_id: selectedStaff,
+      date: excForm.date,
+      type: excForm.type,
+      time_from: excForm.type !== "libre" ? excForm.timeFrom : null,
+      time_to: excForm.type !== "libre" ? excForm.timeTo : null,
+      notes: excForm.notes || null,
+    };
+    if (editingExc) {
+      const { error } = await supabase.from('availability_exceptions').update(row).eq('id', editingExc.id);
+      if (error) { alert("Error: " + error.message); return; }
+    } else {
+      const { error } = await supabase.from('availability_exceptions').insert({ ...row, id: crypto.randomUUID() });
+      if (error) { alert("Error: " + error.message); return; }
+    }
+    const { data: updated } = await supabase.from('availability_exceptions').select('*');
+    setExceptions((updated || []).map(mapExc));
     setShowExcForm(false); setEditingExc(null); setExcForm(emptyExc);
   };
 
-  const handleDeleteExc = (id) => { saveExc(exceptions.filter(e => e.id !== id)); };
+  const handleDeleteExc = async (id) => {
+    await supabase.from('availability_exceptions').delete().eq('id', id);
+    setExceptions(prev => prev.filter(e => e.id !== id));
+  };
 
   const todayStr = today();
   const staffColor = getStaffColor(selectedStaff);
