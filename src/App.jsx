@@ -300,6 +300,23 @@ const ClientSearchInput = ({ value, onChange, clients, required, dark, label = "
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
+  useEffect(() => {
+  // 1. Obtener sesión al cargar
+  supabase.auth.getSession().then(({ data }) => {
+    setSession(data.session);
+    setLoadingAuth(false);
+  });
+
+  // 2. Escuchar cambios (login/logout)
+  const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    setSession(session);
+  });
+
+  return () => {
+    listener.subscription.unsubscribe();
+  };
+}, []);
+
   // Sincronizar el texto con el cliente seleccionado
   const selectedClient = clients.find(c => c.id === value);
   useEffect(() => {
@@ -510,6 +527,17 @@ const LoginScreen = ({ onLogin }) => {
       setLoading(false);
     }
   };
+
+  const handleLogin = async ({ email, password }) => {
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) {
+    throw error;
+  }
+};
 
   return (
     <div style={{
@@ -3836,6 +3864,8 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [data, setData] = useState({ clients: [], services: [], payments: [], appointments: [] });
+  const [session, setSession] = useState(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
 
   // Cargar datos y configuración desde Supabase
   const loadData = useCallback(async () => {
@@ -3938,6 +3968,14 @@ export default function App() {
       }
     });
 
+if (loadingAuth) {
+  return <div style={{ padding: 40 }}>Cargando...</div>;
+}
+
+if (!session) {
+  return <LoginScreen onLogin={handleLogin} />;
+}
+    
     return () => {
       mounted = false;
       subscription.unsubscribe();
