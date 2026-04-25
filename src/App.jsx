@@ -3977,13 +3977,7 @@ useEffect(() => {
       }
     });
 
-if (loadingAuth) {
-  return <div style={{ padding: 40 }}>Cargando...</div>;
-}
 
-if (!session) {
-  return <LoginScreen onLogin={handleLogin} />;
-}
     
     return () => {
       mounted = false;
@@ -4014,8 +4008,33 @@ if (!session) {
     </div>
   );
 
-  if (!appReady) return <LoadingScreen />;
-  if (!currentUser) return (<><style>{globalCSS}</style><LoginScreen onLogin={handleLogin} /></>);
+  // 1. esperar Supabase
+if (loadingAuth) return <LoadingScreen />;
+
+// 2. si no hay sesión → login
+if (!session) {
+  return (
+    <>
+      <style>{globalCSS}</style>
+      <LoginScreen onLogin={handleLogin} />
+    </>
+  );
+}
+
+// 3. esperar tu app (datos internos)
+if (!appReady) return <LoadingScreen />;
+
+// 4. si no se pudo cargar usuario
+if (!currentUser) {
+  return (
+    <>
+      <style>{globalCSS}</style>
+      <div>Error cargando usuario</div>
+    </>
+  );
+}
+
+
 
   const bg = dark ? COLORS.bgDark : COLORS.bg;
   const ml = sidebarCollapsed ? "64px" : "240px";
