@@ -215,58 +215,41 @@ const globalCSS = `
     .zen-mobile-bar { display: flex; }
     .zen-main { margin-left: 0 !important; padding: 68px 12px 20px !important; }
 
-    /* Grids: todas las columnas multi-col se vuelven 1 columna en mobile */
-    .zen-main [style*="gridTemplateColumns"] {
-      grid-template-columns: 1fr !important;
-    }
-
-    /* Pero mantener las grids que SÍ tienen que ser multi-col (calendario semanal, mes) */
-    .zen-main .keep-grid {
-      grid-template-columns: revert !important;
-    }
-
     /* Inputs nunca menos de 16px → evita zoom automático de iOS */
     .zen-main input, .zen-main select, .zen-main textarea {
       font-size: 16px !important;
     }
 
-    /* Tablas y filas de tabla: scroll horizontal */
-    .zen-table-wrap {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
+    /* Modales: scrolleables y ocupan toda la pantalla */
+    .zen-modal-overlay {
+      padding: 0 !important;
+      align-items: flex-end !important;
     }
-
-    /* Modales: ocupan más pantalla en mobile */
     .zen-modal-content {
       width: 100% !important;
       max-width: 100% !important;
-      max-height: 100vh !important;
-      border-radius: 12px 12px 0 0 !important;
-      align-self: flex-end;
+      max-height: 95vh !important;
+      border-radius: 16px 16px 0 0 !important;
     }
-
-    /* Botones más grandes para tap (mínimo 40px) */
-    .zen-main button {
-      min-height: 38px;
-    }
-
-    /* Headers de página: ajustar tamaño */
-    .zen-main h2 {
-      font-size: 20px !important;
-    }
-
-    /* Calendario semanal: scroll horizontal */
-    .zen-week-scroll {
-      overflow-x: auto;
+    .zen-modal-body {
+      overflow-y: auto !important;
       -webkit-overflow-scrolling: touch;
+      flex: 1;
+    }
+
+    /* Calendario semanal: scroll horizontal con ancho mínimo */
+    .zen-week-scroll {
+      overflow-x: auto !important;
+      -webkit-overflow-scrolling: touch;
+      width: 100%;
     }
     .zen-week-scroll > div {
       min-width: 700px;
     }
 
-    /* Tabs scrolleable */
+    /* Tabs scrolleable horizontal */
     .zen-tabs-scroll {
-      overflow-x: auto;
+      overflow-x: auto !important;
       -webkit-overflow-scrolling: touch;
       flex-wrap: nowrap !important;
     }
@@ -278,12 +261,16 @@ const globalCSS = `
     .recharts-responsive-container {
       min-height: 200px !important;
     }
+
+    /* Headers de página: ajustar tamaño */
+    .zen-main h2 {
+      font-size: 22px !important;
+    }
   }
 
   /* Mobile chico (iPhone SE etc) */
   @media (max-width: 380px) {
     .zen-main { padding: 64px 8px 16px !important; }
-    .zen-main h2 { font-size: 18px !important; }
   }
 `;
 
@@ -476,7 +463,7 @@ const Modal = ({ open, onClose, title, children, wide, dark }) => {
           <h3 style={{ fontFamily: "var(--font-display)", fontSize: "18px", fontWeight: 600, color: dark ? COLORS.textDark : COLORS.text }}>{title}</h3>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: dark ? COLORS.textMutedDark : COLORS.textMuted, padding: "4px" }}><Icons.Close /></button>
         </div>
-        <div ref={contentRef} style={{ padding: "24px", overflowY: "auto", flex: 1, minHeight: 0 }}>{children}</div>
+        <div ref={contentRef} className="zen-modal-body" style={{ padding: "24px", overflowY: "auto", flex: 1, minHeight: 0 }}>{children}</div>
       </div>
     </div>
   );
@@ -1143,7 +1130,7 @@ const ServicesPage = ({ services, setServices, payments, clients, user, dark }) 
           const pending = detail.finalPrice - paid;
           return (
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <div className="keep-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "12px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "12px" }}>
                 {[["Fecha", formatDate(detail.date)], ["Horario", `${detail.startTime} - ${detail.endTime}`], ["Duración", `${detail.duration} min`], ["Tipo", mt?.name], ["Profesional", staff?.name], ["Cliente", client?.name], ["Sala", detail.room || "—"]].map(([l, v]) => (
                   <div key={l}><span style={{ fontSize: "11px", color: COLORS.textMuted, display: "block" }}>{l}</span><strong style={{ color: dark ? COLORS.textDark : COLORS.text }}>{v}</strong></div>
                 ))}
@@ -1337,7 +1324,7 @@ const PaymentsPage = ({ appointments, services, payments, setPayments, clients, 
       )}
 
       {viewMode === "payments" && (
-        <div className="keep-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "12px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "12px" }}>
           {[
             { label: "Total cobrado", value: totalFiltered, color: mainText },
             { label: "🏢 Al centro", value: totalCentro + totalSinDestino, color: COLORS.primary },
@@ -1540,7 +1527,7 @@ const ClientsPage = ({ clients, setClients, services, payments, appointments, us
           const cServices = services.filter(s => s.clientId === detail.id).sort((a, b) => b.date.localeCompare(a.date));
           return (
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <div className="keep-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "12px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "12px" }}>
                 {[["Nombre", detail.name], ["Teléfono", detail.phone || "—"], ["Email", detail.email || "—"], ["Nacimiento", detail.birthdate ? formatDate(detail.birthdate) : "—"]].map(([l, v]) => (
                   <div key={l}><span style={{ fontSize: "11px", color: COLORS.textMuted, display: "block" }}>{l}</span><strong style={{ color: dark ? COLORS.textDark : COLORS.text }}>{v}</strong></div>
                 ))}
@@ -1724,7 +1711,7 @@ const ReportsPage = ({ appointments, services, payments, setPayments, clients, u
       </div>
 
       {/* KPIs resumen */}
-      <div className="keep-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "12px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "12px" }}>
         {[
           { label: "Masajes", value: totalMasajes, format: v => v },
           { label: "Ingresos", value: totalIngresos, format: formatCurrency },
@@ -1951,7 +1938,7 @@ const LiquidacionesTab = ({ validPay, allPayments, setPayments, appointments, re
       </div>
 
       {/* KPIs globales */}
-      <div className="keep-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "12px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "12px" }}>
         {[
           { label: "Total Facturado", value: formatCurrency(totales.totalServicio), color: mainText },
           { label: "Cobró la Masajista", value: formatCurrency(totales.cobradoPorMasajista), color: COLORS.success },
@@ -2038,7 +2025,7 @@ const LiquidacionesTab = ({ validPay, allPayments, setPayments, appointments, re
 
               {/* Resumen de la masajista */}
               {liq && (
-                <div className="keep-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: "10px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: "10px" }}>
                   {[
                     { label: "Facturado", value: formatCurrency(liq.totalServicio), color: mainText },
                     { label: "Cobró ella", value: formatCurrency(liq.cobradoPorMasajista), color: COLORS.success },
@@ -2308,7 +2295,7 @@ const WeekView = ({ weekDays, appointments, blocks = [], availability = [], clie
     <div className="zen-week-scroll">
     <div style={{ border: `1px solid ${borderC}`, borderRadius: "12px", overflow: "hidden" }}>
       {/* Encabezado días */}
-      <div className="keep-grid" style={{ display: "grid", gridTemplateColumns: "48px repeat(7, 1fr)", background: dark ? COLORS.cardDark : "#faf9f7", borderBottom: `1px solid ${borderC}` }}>
+      <div style={{ display: "grid", gridTemplateColumns: "48px repeat(7, 1fr)", background: dark ? COLORS.cardDark : "#faf9f7", borderBottom: `1px solid ${borderC}` }}>
         <div style={{ borderRight: `1px solid ${borderC}` }} />
         {weekDays.map((d, i) => {
           const ds = toDateStr(d);
@@ -2331,7 +2318,7 @@ const WeekView = ({ weekDays, appointments, blocks = [], availability = [], clie
 
       {/* Franja de disponibilidad (estilo Google Calendar "todo el día") */}
       {hasAnyAvail && (
-        <div className="keep-grid" style={{ display: "grid", gridTemplateColumns: "48px repeat(7, 1fr)", background: dark ? "rgba(255,255,255,0.02)" : "#fafaf8", borderBottom: `1px solid ${borderC}` }}>
+        <div style={{ display: "grid", gridTemplateColumns: "48px repeat(7, 1fr)", background: dark ? "rgba(255,255,255,0.02)" : "#fafaf8", borderBottom: `1px solid ${borderC}` }}>
           <div style={{ borderRight: `1px solid ${borderC}`, display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "3px 5px 3px 2px" }}>
             <span style={{ fontSize: "8px", color: mutedText, lineHeight: 1.2, textAlign: "right" }}>horario</span>
           </div>
@@ -2558,7 +2545,7 @@ const MonthView = ({ year, month, appointments, blocks = [], clients, dark, onCl
 
   return (
     <div style={{ border: `1px solid ${borderC}`, borderRadius: "12px", overflow: "hidden" }}>
-      <div className="keep-grid" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", background: dark ? COLORS.cardDark : "#faf9f7" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", background: dark ? COLORS.cardDark : "#faf9f7" }}>
         {["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"].map(d => (
           <div key={d} style={{ padding: "10px 4px", textAlign: "center", fontSize: "11px", fontWeight: 600, color: mutedText, borderBottom: `1px solid ${borderC}` }}>{d}</div>
         ))}
@@ -3608,7 +3595,7 @@ const AvailabilityPage = ({ dark }) => {
         </div>
         <div style={{ padding: "16px 20px" }}>
           {/* Grilla de días */}
-          <div className="keep-grid" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "8px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "8px" }}>
             {[1,2,3,4,5,6,0].map(dow => {
               const daySlots = staffBase.filter(b => b.dayOfWeek === dow);
               const hasSlots = daySlots.length > 0;
@@ -3668,7 +3655,7 @@ const AvailabilityPage = ({ dark }) => {
           </div>
         </div>
         <div style={{ padding: "16px 20px" }}>
-          <div className="keep-grid" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "8px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "8px" }}>
             {weekDays.map((dateObj) => {
               const dateStr = localDateStr(dateObj);
               const isT = dateStr === todayStr;
@@ -3873,7 +3860,7 @@ const SettingsPage = ({ user, dark, data }) => {
       </div>
       <div style={{ background: dark ? COLORS.cardDark : COLORS.card, borderRadius: "14px", padding: "24px", border: `1px solid ${dark ? COLORS.borderDark : COLORS.border}` }}>
         <h3 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "16px", color: dark ? COLORS.textDark : COLORS.text }}>Usuario Actual</h3>
-        <div className="keep-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "12px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "12px" }}>
           <div><span style={{ fontSize: "11px", color: COLORS.textMuted }}>Nombre</span><br /><strong style={{ color: dark ? COLORS.textDark : COLORS.text }}>{user.name}</strong></div>
           <div><span style={{ fontSize: "11px", color: COLORS.textMuted }}>Usuario</span><br /><strong style={{ color: dark ? COLORS.textDark : COLORS.text }}>{user.username}</strong></div>
           <div><span style={{ fontSize: "11px", color: COLORS.textMuted }}>Rol</span><br /><Badge color={COLORS.primary}>{ROLES.find(r => r.id === user.role)?.name}</Badge></div>
