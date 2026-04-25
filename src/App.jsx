@@ -220,21 +220,17 @@ const globalCSS = `
       font-size: 16px !important;
     }
 
-    /* Modales: scrolleables y ocupan toda la pantalla */
+    /* Modales: el overlay scrollea (mejor compat iOS Safari) */
     .zen-modal-overlay {
       padding: 0 !important;
-      align-items: flex-end !important;
+      align-items: flex-start !important;
     }
     .zen-modal-content {
       width: 100% !important;
       max-width: 100% !important;
-      max-height: 95vh !important;
-      border-radius: 16px 16px 0 0 !important;
-    }
-    .zen-modal-body {
-      overflow-y: auto !important;
-      -webkit-overflow-scrolling: touch;
-      flex: 1;
+      border-radius: 0 !important;
+      margin: 0 !important;
+      min-height: 100vh;
     }
 
     /* Calendario semanal: scroll horizontal con ancho mínimo */
@@ -429,11 +425,19 @@ const Modal = ({ open, onClose, title, children, wide, dark }) => {
   useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden";
+      document.body.style.position = "fixed";
+      document.body.style.width = "100%";
       if (contentRef.current) contentRef.current.scrollTop = 0;
     } else {
       document.body.style.overflow = "";
+      document.body.style.position = "";
+      document.body.style.width = "";
     }
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+      document.body.style.position = "";
+      document.body.style.width = "";
+    };
   }, [open]);
 
   if (!open) return null;
@@ -446,24 +450,29 @@ const Modal = ({ open, onClose, title, children, wide, dark }) => {
       display: "flex", alignItems: "center", justifyContent: "center",
       zIndex: 99999,
       padding: "20px",
+      overflowY: "auto",
+      WebkitOverflowScrolling: "touch",
     }} onClick={onClose}>
       <div className="animate-scale zen-modal-content" onClick={e => e.stopPropagation()} style={{
         background: dark ? COLORS.surfaceDark : COLORS.surface, borderRadius: "16px",
         width: wide ? "min(1000px, 96vw)" : "min(560px, 92vw)",
-        maxHeight: "92vh",
         border: `1px solid ${dark ? COLORS.borderDark : COLORS.border}`,
         boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
         display: "flex", flexDirection: "column",
+        margin: "auto",
       }}>
         <div style={{
           display: "flex", justifyContent: "space-between", alignItems: "center",
           padding: "18px 24px", borderBottom: `1px solid ${dark ? COLORS.borderDark : COLORS.border}`,
           flexShrink: 0,
+          position: "sticky", top: 0, zIndex: 2,
+          background: dark ? COLORS.surfaceDark : COLORS.surface,
+          borderRadius: "16px 16px 0 0",
         }}>
           <h3 style={{ fontFamily: "var(--font-display)", fontSize: "18px", fontWeight: 600, color: dark ? COLORS.textDark : COLORS.text }}>{title}</h3>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: dark ? COLORS.textMutedDark : COLORS.textMuted, padding: "4px" }}><Icons.Close /></button>
         </div>
-        <div ref={contentRef} className="zen-modal-body" style={{ padding: "24px", overflowY: "auto", flex: 1, minHeight: 0 }}>{children}</div>
+        <div ref={contentRef} className="zen-modal-body" style={{ padding: "24px" }}>{children}</div>
       </div>
     </div>
   );
