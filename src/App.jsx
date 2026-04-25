@@ -2222,10 +2222,10 @@ const WeekView = ({ weekDays, appointments, blocks = [], availability = [], clie
   const lastHour = (() => {
     const allAppts = weekDays.flatMap(d => getAppts(toDateStr(d)));
     const allBlocks = weekDays.flatMap(d => getBlocks(toDateStr(d)));
-    if (allAppts.length === 0 && allBlocks.length === 0) return 19;
+    if (allAppts.length === 0 && allBlocks.length === 0) return 21;
     const maxAppt = allAppts.length > 0 ? Math.max(...allAppts.map(a => timeToMin(a.time) + (a.duration || 60))) : 0;
     const maxBlock = allBlocks.length > 0 ? Math.max(...allBlocks.map(b => timeToMin(b.timeTo))) : 0;
-    return Math.min(Math.max(Math.ceil(Math.max(maxAppt, maxBlock) / 60) + 1, 19), 23);
+    return Math.min(Math.max(Math.ceil(Math.max(maxAppt, maxBlock) / 60) + 1, 21), 23);
   })();
 
   const hours = Array.from({ length: lastHour - CAL_START }, (_, i) => i + CAL_START);
