@@ -3837,38 +3837,45 @@ export default function App() {
   const [dark, setDark] = useState(false);
   const [data, setData] = useState({ clients: [], services: [], payments: [], appointments: [] });
 
-  // Cargar datos solo cuando hay usuario autenticado
+  // Cargar datos desde Supabase
   const loadData = useCallback(async () => {
-    try {
-      const [clients, services, payments, appointments] = await Promise.all([
-        supabase.from('clients').select('*'),
-        supabase.from('services').select('*'),
-        supabase.from('payments').select('*'),
-        supabase.from('appointments').select('*'),
-      ]);
-      setData({
-        clients: clients.data || [],
-        services: (services.data || []).map(mapService),
-        payments: (payments.data || []).map(mapPayment),
-        appointments: (appointments.data || []).map(mapAppointment),
-      });
-    } catch (e) {
-      console.error("Error cargando datos:", e);
-    } finally {
-      setAppReady(true);
-    }
+    const [clients, services, payments, appointments] = await Promise.all([
+      supabase.from('clients').select('*'),
+      supabase.from('services').select('*'),
+      supabase.from('payments').select('*'),
+      supabase.from('appointments').select('*'),
+    ]);
+    if (clients.error) console.error("clients:", clients.error);
+    if (services.error) console.error("services:", services.error);
+    if (payments.error) console.error("payments:", payments.error);
+    if (appointments.error) console.error("appointments:", appointments.error);
+    setData({
+      clients: clients.data || [],
+      services: (services.data || []).map(mapService),
+      payments: (payments.data || []).map(mapPayment),
+      appointments: (appointments.data || []).map(mapAppointment),
+    });
   }, []);
 
   // Sesión de Supabase Auth
   useEffect(() => {
-    // Solo onAuthStateChange maneja todo — evita doble ejecución con getSession
+    // Timeout de seguridad: si algo falla silenciosamente, igual mostramos la app
+    const safetyTimeout = setTimeout(() => {
+      console.warn("Timeout de seguridad activado — forzando appReady");
+      setAppReady(true);
+    }, 6000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Auth event:", event, session?.user?.email);
+
       if (event === 'SIGNED_OUT' || !session) {
+        clearTimeout(safetyTimeout);
         setCurrentUser(null);
         setData({ clients: [], services: [], payments: [], appointments: [] });
         setAppReady(true);
         return;
       }
+
       if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
         setAppReady(false);
         try {
@@ -3877,17 +3884,25 @@ export default function App() {
             .select('*')
             .eq('auth_id', session.user.id)
             .single();
-          if (userError) throw userError;
-          setCurrentUser(userData);
-          await loadData();
+          if (userError) {
+            console.error("Error cargando usuario:", userError);
+          } else {
+            setCurrentUser(userData);
+            await loadData();
+          }
         } catch (e) {
-          console.error("Error al iniciar sesión:", e);
+          console.error("Error inesperado en auth:", e);
+        } finally {
+          clearTimeout(safetyTimeout);
           setAppReady(true);
         }
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(safetyTimeout);
+      subscription.unsubscribe();
+    };
   }, [loadData]);
 
   const handleLogin = async ({ email, password }) => {
