@@ -3831,8 +3831,10 @@ const SettingsPage = ({ user, dark, data }) => {
 export default function App() {
   useEffect(() => { document.title = "Tuina Admin"; }, []);
 
+  const [session, setSession] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [appReady, setAppReady] = useState(false);
+  const [authError, setAuthError] = useState(null);
   const [activePage, setActivePage] = useState("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -3886,15 +3888,22 @@ export default function App() {
   }, []);
 
   // ── AUTH: simple y blindado ──
-  const initUser = useCallback(async (session) => {
+  const initUser = useCallback(async (sess) => {
+    setSession(sess);
+    setAuthError(null);
     try {
       const { data: userData, error } = await supabase
         .from('users')
         .select('*')
-        .eq('id', session.user.id)
+        .eq('id', sess.user.id)
         .maybeSingle();
-      if (error || !userData) {
+      if (error) {
         console.error("Error cargando usuario:", error);
+        setAuthError("No se pudo cargar el perfil de usuario. Verificá los permisos en Supabase (RLS). Error: " + (error.message || error.code));
+        setCurrentUser(null);
+      } else if (!userData) {
+        console.error("Usuario no encontrado en tabla users");
+        setAuthError("Tu cuenta de auth existe pero no tiene registro en la tabla 'users'. Pedí al admin que te agregue.");
         setCurrentUser(null);
       } else {
         setCurrentUser(userData);
@@ -3902,6 +3911,7 @@ export default function App() {
       }
     } catch (e) {
       console.error("Error en initUser:", e);
+      setAuthError("Error inesperado al iniciar sesión: " + e.message);
       setCurrentUser(null);
     } finally {
       setAppReady(true);
@@ -3934,7 +3944,9 @@ export default function App() {
         initUser(session);
       }
       if (event === 'SIGNED_OUT') {
+        setSession(null);
         setCurrentUser(null);
+        setAuthError(null);
         setData({ clients: [], services: [], payments: [], appointments: [] });
         setAppReady(true);
       }
@@ -3979,8 +3991,8 @@ export default function App() {
   // 1. esperar que la app esté lista
 if (!appReady) return <LoadingScreen />;
 
-// 2. si no hay usuario → login
-if (!currentUser) {
+// 2. si no hay sesión → login
+if (!session) {
   return (
     <>
       <style>{globalCSS}</style>
@@ -3989,12 +4001,28 @@ if (!currentUser) {
   );
 }
 
-// 4. si no se pudo cargar usuario
+// 3. si hay sesión pero falló cargar el usuario → mostrar error con opción de reintentar/cerrar sesión
 if (!currentUser) {
   return (
     <>
       <style>{globalCSS}</style>
-      <div>Error cargando usuario</div>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: COLORS.bg, fontFamily: "var(--font-body)" }}>
+        <div style={{ textAlign: "center", maxWidth: "420px", padding: "32px", background: COLORS.card, borderRadius: "16px", border: `1px solid ${COLORS.border}`, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
+          <div style={{ fontSize: "40px", marginBottom: "16px" }}>⚠️</div>
+          <h2 style={{ fontSize: "18px", fontWeight: 600, marginBottom: "12px", color: COLORS.text }}>Error cargando usuario</h2>
+          <p style={{ fontSize: "13px", color: COLORS.textMuted, marginBottom: "24px", lineHeight: 1.5 }}>
+            {authError || "No se pudo cargar la información del usuario."}
+          </p>
+          <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+            <button onClick={() => { setAppReady(false); initUser(session); }} style={{ padding: "10px 20px", background: COLORS.primary, color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 500 }}>
+              Reintentar
+            </button>
+            <button onClick={handleLogout} style={{ padding: "10px 20px", background: "transparent", color: COLORS.danger, border: `1px solid ${COLORS.danger}`, borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 500 }}>
+              Cerrar sesión
+            </button>
+          </div>
+        </div>
+      </div>
     </>
   );
 }
