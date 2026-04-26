@@ -2239,6 +2239,8 @@ const WeekView = ({ weekDays, appointments, blocks = [], availability = [], clie
 
   return (
     <div style={{ border: `1px solid ${borderC}`, borderRadius: "12px", overflow: "hidden" }}>
+      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+        <div style={{ minWidth: "700px" }}>
       {/* Encabezado días */}
       <div style={{ display: "grid", gridTemplateColumns: "48px repeat(7, 1fr)", background: dark ? COLORS.cardDark : "#faf9f7", borderBottom: `1px solid ${borderC}` }}>
         <div style={{ borderRight: `1px solid ${borderC}` }} />
@@ -2270,7 +2272,7 @@ const WeekView = ({ weekDays, appointments, blocks = [], availability = [], clie
           {weekDays.map((d, i) => {
             const slots = getAvailSlots(d);
             return (
-              <div key={i} style={{ borderRight: i < 6 ? `1px solid ${borderC}` : "none", padding: "3px 3px", display: "flex", flexDirection: "column", gap: "2px", minHeight: "28px" }}>
+              <div key={i} style={{ borderRight: i < 6 ? `1px solid ${borderC}` : "none", padding: "3px 2px", display: "flex", flexDirection: "column", gap: "2px", minHeight: "32px" }}>
                 {slots.map((slot, si) => {
                   const staffName = STAFF.find(s => s.id === slot.staffId)?.name || "";
                   const isExc = slot.isException;
@@ -2281,25 +2283,25 @@ const WeekView = ({ weekDays, appointments, blocks = [], availability = [], clie
                       style={{
                         background: barColor,
                         borderRadius: "3px",
-                        padding: "1px 5px",
+                        padding: "2px 4px",
                         fontSize: "10px",
                         fontWeight: 600,
                         color: "#fff",
                         cursor: onClickAvail ? "pointer" : "default",
                         overflow: "hidden",
-                        whiteSpace: "nowrap",
-                        textOverflow: "ellipsis",
                         opacity: isExc ? 0.85 : 1,
                         borderLeft: isExc ? `3px solid rgba(255,255,255,0.5)` : "none",
                         display: "flex",
-                        alignItems: "center",
-                        gap: "3px",
+                        flexDirection: "column",
+                        lineHeight: 1.25,
                       }}
                       title={`${staffName}: ${slot.timeFrom}–${slot.timeTo}${isExc ? " (modificado)" : ""}`}
                     >
-                      {isExc && <span style={{ fontSize: "9px" }}>⚡</span>}
-                      {slot.timeFrom} a {slot.timeTo}
-                      <span style={{ opacity: 0.75, fontSize: "9px", marginLeft: "2px" }}>{staffName}</span>
+                      <span style={{ display: "flex", alignItems: "center", gap: "2px", whiteSpace: "nowrap" }}>
+                        {isExc && <span style={{ fontSize: "9px" }}>⚡</span>}
+                        {slot.timeFrom} a {slot.timeTo}
+                      </span>
+                      <span style={{ opacity: 0.8, fontSize: "9px" }}>{staffName}</span>
                     </div>
                   );
                 })}
@@ -2464,6 +2466,8 @@ const WeekView = ({ weekDays, appointments, blocks = [], availability = [], clie
             </div>
           );
         })}
+      </div>
+        </div>
       </div>
     </div>
   );
