@@ -513,17 +513,6 @@ const LoginScreen = ({ onLogin }) => {
     }
   };
 
-  const handleLogin = async ({ email, password }) => {
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
-
-  if (error) {
-    throw error;
-  }
-};
-
   return (
     <div style={{
       minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
@@ -3842,30 +3831,6 @@ const SettingsPage = ({ user, dark, data }) => {
 export default function App() {
   useEffect(() => { document.title = "Tuina Admin"; }, []);
 
-const handleLogin = async ({ email, password }) => {
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
-
-  if (error) throw error;
-};
-
-useEffect(() => {
-  supabase.auth.getSession().then(({ data }) => {
-    setSession(data.session);
-    setLoadingAuth(false);
-  });
-
-  const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-    setSession(session);
-  });
-
-  return () => {
-    listener.subscription.unsubscribe();
-  };
-}, []);
-
   const [currentUser, setCurrentUser] = useState(null);
   const [appReady, setAppReady] = useState(false);
   const [activePage, setActivePage] = useState("dashboard");
@@ -3873,8 +3838,6 @@ useEffect(() => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [data, setData] = useState({ clients: [], services: [], payments: [], appointments: [] });
-  const [session, setSession] = useState(null);
-  const [loadingAuth, setLoadingAuth] = useState(true);
 
   // Cargar datos y configuración desde Supabase
   const loadData = useCallback(async () => {
@@ -3986,6 +3949,11 @@ useEffect(() => {
   }, [initUser]);
 
    
+
+  const handleLogin = async ({ email, password }) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
