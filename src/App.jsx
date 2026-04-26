@@ -3976,11 +3976,11 @@ export default function App() {
     </div>
   );
 
-  // 1. esperar Supabase
-if (loadingAuth) return <LoadingScreen />;
+  // 1. esperar que la app esté lista
+if (!appReady) return <LoadingScreen />;
 
-// 2. si no hay sesión → login
-if (!session) {
+// 2. si no hay usuario → login
+if (!currentUser) {
   return (
     <>
       <style>{globalCSS}</style>
@@ -3988,9 +3988,6 @@ if (!session) {
     </>
   );
 }
-
-// 3. esperar tu app (datos internos)
-if (!appReady) return <LoadingScreen />;
 
 // 4. si no se pudo cargar usuario
 if (!currentUser) {
