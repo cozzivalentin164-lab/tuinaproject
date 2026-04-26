@@ -2221,14 +2221,15 @@ const WeekView = ({ weekDays, appointments, blocks = [], availability = [], clie
     return result;
   };
 
-  // Calcular hasta qué hora mostrar (mínimo 19, máximo 23)
+  // Calcular hasta qué hora mostrar (mínimo 22 para cubrir hasta 21:00, máximo 23)
   const lastHour = (() => {
     const allAppts = weekDays.flatMap(d => getAppts(toDateStr(d)));
     const allBlocks = weekDays.flatMap(d => getBlocks(toDateStr(d)));
-    if (allAppts.length === 0 && allBlocks.length === 0) return 21;
+    const allAvailSlots = weekDays.flatMap(d => getAvailSlots(d));
     const maxAppt = allAppts.length > 0 ? Math.max(...allAppts.map(a => timeToMin(a.time) + (a.duration || 60))) : 0;
     const maxBlock = allBlocks.length > 0 ? Math.max(...allBlocks.map(b => timeToMin(b.timeTo))) : 0;
-    return Math.min(Math.max(Math.ceil(Math.max(maxAppt, maxBlock) / 60) + 1, 21), 23);
+    const maxAvail = allAvailSlots.length > 0 ? Math.max(...allAvailSlots.map(s => timeToMin(s.timeTo))) : 0;
+    return Math.min(Math.max(Math.ceil(Math.max(maxAppt, maxBlock, maxAvail) / 60) + 1, 22), 23);
   })();
 
   const hours = Array.from({ length: lastHour - CAL_START }, (_, i) => i + CAL_START);
