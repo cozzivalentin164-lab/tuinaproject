@@ -3895,7 +3895,7 @@ export default function App() {
       const { data: userData, error } = await supabase
         .from('users')
         .select('*')
-        .eq('id', sess.user.id)
+        .eq('auth_id', sess.user.id)
         .maybeSingle();
       if (error) {
         console.error("Error cargando usuario:", error);
